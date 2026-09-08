@@ -99,7 +99,7 @@ Requisiti, non speranze. La CI misura e fallisce se si sfora.
 |---|---|---|
 | RAM host a riposo, nessun modulo attivo | **< 25 MB** | private working set |
 | RAM host a regime, moduli built-in attivi | **< 60 MB** | con sysmon, media, shelf |
-| CPU a riposo (barra nascosta) | **≈ 0,0 %** | media su 60 s, cursore lontano |
+| CPU a riposo (barra nascosta) | **≤ 0,2 %** | misurato 0,10 % su 60 s, cursore lontano. Il contatore di Windows ha un quanto di 15,6 ms: sotto quella soglia la misura è rumore |
 | CPU durante l'animazione di apertura | < 2 % di un core | 0 % se il backend di composizione muove la visual |
 | GPU a riposo | 0 % | nessun lavoro fra un ridisegno e l'altro |
 | Avvio → barra pronta a reagire | **< 250 ms** | processo lanciato → zona trigger attiva |
@@ -352,6 +352,33 @@ gesto invece del suo inizio**.
 Due soglie e non una, per lo stesso motivo di §8.2: seguire da lontano è un accenno discreto,
 crescere da lontano sarebbe un'animazione che parte ogni volta che passi da quella parte dello
 schermo.
+
+**Le gocce.** Il profilo della barra non è un rettangolo arrotondato: è una path geometry
+costruita in coordinate lungo/attraverso — così i quattro bordi sono lo stesso problema — il
+cui fianco interno si gonfia verso il cursore. Due rigonfiamenti, non uno, che inseguono la
+stessa meta con costanti di tempo diverse (45 e 150 ms): **è la differenza fra i due ritardi a
+leggersi come liquido**. Con un ritardo solo si vede una protuberanza agganciata al mouse.
+
+Restano sempre attaccate — non sono forme a sé che si staccano, è il profilo che si allunga —
+perché è quello a leggersi come tensione superficiale. E più il cursore è vicino, più la goccia
+è alta e stretta: più la tiri, più si stringe.
+
+Due conseguenze non ovvie:
+
+- **La finestra è più spessa della barra.** I punti che avanzano davanti sono lo spazio in cui
+  la goccia si allunga. Senza, la forma occuperebbe tutta la superficie e Direct2D la
+  ritaglierebbe: la goccia non si vedrebbe mai. È superficie trasparente, quindi non copre
+  niente e non riceve click.
+- **Il raggio degli angoli cede alla goccia.** A riposo la pastiglia è lunga una cinquantina di
+  punti: con raccordi da venti, di bordo dritto su cui gonfiarsi ne restano sei. Quando una
+  goccia c'è, i raccordi si stringono — e il risultato è che la pastiglia si assottiglia alle
+  estremità e spinge in mezzo, che è esattamente ciò che fa la tensione superficiale.
+
+**Le icone si ingrandiscono** quando il cursore le sfiora, con una gaussiana su due bottoni di
+raggio. Con una differenza voluta rispetto alla dock del Mac: **cresce solo ciò che si vede, il
+rettangolo cliccabile resta dov'era.** Far muovere i bersagli sotto il cursore mentre lo si
+avvicina è il difetto per cui quell'effetto viene disattivato da metà delle persone che lo
+provano.
 
 **A riposo e da aperta la forma disegnata è la stessa**, con una lunghezza diversa: una
 pastiglia corta che si allunga fino a diventare la barra, e le icone che compaiono quando c'è

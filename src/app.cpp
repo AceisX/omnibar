@@ -40,6 +40,15 @@ constexpr float kGrowDip   = 80.f;
 constexpr float kHandleDip     = 46.f;
 constexpr float kHandleGrowDip = 30.f;
 
+// Le gocce. La prima insegue in fretta e si assottiglia avvicinandosi — e' la
+// tensione superficiale: piu' la tiri, piu' si stringe. La seconda e' piu'
+// bassa, piu' larga e piu' lenta, e fa da scia.
+constexpr float kDropMaxDip   = 17.f;
+constexpr float kDropWideDip  = 30.f;   // semiampiezza da lontano
+constexpr float kDropTightDip = 15.f;   // semiampiezza da vicino
+constexpr float kDropFastTau  = 45.f;
+constexpr float kDropSlowTau  = 150.f;
+
 // Costante di tempo dell'inseguimento. Piu' e' bassa piu' e' reattivo; sotto i
 // 40 ms smette di sembrare un liquido e comincia a sembrare un incollaggio.
 constexpr float kFollowTauMs = 65.f;
@@ -141,6 +150,12 @@ bool App::Init(HINSTANCE inst) {
 
     SetCursorTick(kSlowTickMs);
 
+    log::Debug(L"placement: superficie " + std::to_wstring(placement_.sizePx.cx) + L"x" +
+              std::to_wstring(placement_.sizePx.cy) + L"  barra " +
+              std::to_wstring(placement_.thicknessPx) + L"  goccia " +
+              std::to_wstring(placement_.bulgeRoomPx) + L"  hidden.left " +
+              std::to_wstring(placement_.hidden.left) + L"  work.right " +
+              std::to_wstring(placement_.work.right));
     log::Info(std::wstring(L"Barra pronta — bordo a ") + EdgeName(placementCfg_.edge) +
               L", " + std::to_wstring(placement_.sizePx.cx) + L"x" +
               std::to_wstring(placement_.sizePx.cy) + L" px, a riposo");
@@ -370,6 +385,12 @@ void App::UpdateAttraction(POINT cursor, float dtMs) {
     // Avvicinandosi, la barra sporge un paio di pixel in piu': e' il richiamo,
     // e vale piu' di qualunque animazione dopo, perche' arriva prima.
     if (!animating_) slide_ = 0.12f * grow_;
+
+    // Le gocce vivono in coordinate della superficie: il cursore in schermo
+    // meno l'origine della finestra.
+    const float local = static_cast<float>(along) - along_;
+    dropFast_ = Approach(dropFast_, local, dtMs, kDropFastTau);
+    dropSlow_ = Approach(dropSlow_, local, dtMs, kDropSlowTau);
 }
 
 void App::OnCursorTick() {
@@ -459,6 +480,11 @@ void App::OnAnimTick() {
 
 void App::OnMouseMove(POINT clientPx) {
     const ui::RectF pt = ToDip(clientPx);
+
+    // Dove sta il cursore lungo la barra: serve all'ingrandimento delle icone.
+    cursorAlong_ = Vertical() ? pt.y : pt.x;
+    magnify_     = 1.f;
+
     const ui::Widget* hit = ui::HitTest(root_, pt.x, pt.y);
     const std::string id = hit ? hit->id : std::string{};
     if (id == hoveredId_) return;
@@ -642,9 +668,23 @@ void App::Relayout() {
     const float padX = Vertical() ? m.padCross : m.padAlong;
     const float padY = Vertical() ? m.padAlong : m.padCross;
 
-    const ui::RectF bounds{padX, padY,
-                           std::max(0.f, w - padX * 2.f),
-                           std::max(0.f, h - padY * 2.f)};
+    // Lo spazio delle gocce non e' barra: il contenuto va spostato dentro lo
+    // spessore vero, altrimenti le icone galleggerebbero davanti al bordo.
+    const float room = static_cast<float>(placement_.bulgeRoomPx) * scale;
+    float offX = 0.f, offY = 0.f;
+    switch (placementCfg_.edge) {
+        case Edge::Right:  offX = room; break;   // la barra sta a destra della superficie
+        case Edge::Bottom: offY = room; break;
+        case Edge::Left:                         // la barra sta gia' all'inizio
+        case Edge::Top:    break;
+    }
+
+    const float availW = Vertical() ? (w - room) : w;
+    const float availH = Vertical() ? h : (h - room);
+
+    const ui::RectF bounds{offX + padX, offY + padY,
+                           std::max(0.f, availW - padX * 2.f),
+                           std::max(0.f, availH - padY * 2.f)};
 
     ui::Layout(root_, bounds, m);
 
@@ -668,6 +708,8 @@ void App::Redraw() {
     const float expand  = SmoothStep(0.15f, 1.f, slide_);
     const float along   = handleDip + (fullDip - handleDip) * expand;
 
+    const float scaleBack = static_cast<float>(placement_.dpi ? placement_.dpi : 96) / 96.f;
+
     render::DrawState state;
     state.hovered      = hoveredId_;
     state.pressed      = pressedId_;
@@ -675,12 +717,43 @@ void App::Redraw() {
     state.edge         = placementCfg_.edge;
     state.shapeAlong   = along;
     state.shapeCenter  = shapeCenter_;
+    state.barThickness = static_cast<float>(placement_.thicknessPx) / scaleBack;
+    state.cursorAlong  = cursorAlong_;
+    state.magnify      = magnify_;
+
+    // Le gocce si vedono solo a barra chiusa o quasi: aperta, il richiamo
+    // l'hanno gia' fatto le icone, e un profilo che continua a ondeggiare
+    // mentre stai cercando di premere un bottone e' solo rumore.
+    const float dropStrength = grow_ * (1.f - SmoothStep(0.05f, 0.45f, slide_));
+    if (dropStrength > 0.02f) {
+        // Piu' il cursore e' vicino, piu' la goccia e' alta e stretta: e' la
+        // tensione superficiale, piu' la tiri piu' si stringe.
+        const float wideBase = kDropWideDip + (kDropTightDip - kDropWideDip) * grow_;
+
+        // Non piu' larga della forma che la ospita: a riposo la pastiglia e'
+        // corta, e una goccia larga quanto lei non sarebbe una goccia.
+        const float wMax = std::max(6.f, along * 0.26f);
+
+        state.bulges[0] = {dropFast_, kDropMaxDip * dropStrength,
+                           std::min(wideBase, wMax)};
+        state.bulges[1] = {dropSlow_, kDropMaxDip * 0.45f * dropStrength,
+                           std::min(wideBase * 1.15f, wMax)};
+        state.bulgeCount = 2;
+    }
     // Le icone compaiono quando c'e' spazio per contenerle, non prima: dentro
     // la pastiglia corta sarebbero un ammasso.
     state.contentAlpha = SmoothStep(0.45f, 0.95f, slide_);
 
     drawnAlong_  = handleDip;
     drawnCenter_ = shapeCenter_;
+    // A riposo questa riga non deve comparire piu' di una volta ogni tanto: se
+    // il log si riempie di disegni a barra ferma, la guardia sopra e' rotta ed
+    // e' li' che se ne va la CPU.
+    if (log::Enabled(log::Level::Debug)) {
+        log::Debug(L"disegno: lunghezza " + std::to_wstring(static_cast<int>(along)) +
+                   L"  centro " + std::to_wstring(shapeCenter_) +
+                   L"  scorrimento " + std::to_wstring(slide_));
+    }
 
     renderer_.Draw(root_, state);
 }

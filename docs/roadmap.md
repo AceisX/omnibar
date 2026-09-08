@@ -36,6 +36,8 @@ tutto il resto ci sta sopra.
 - [x] `shell`: finestra della barra, quattro bordi, DPI per-monitor, multi-monitor, tema chiaro/scuro
 - [x] Macchina a stati `Hidden → Revealed → Pinned` con scorrimento animato
 - [x] Richiamo del cursore a riposo, forma unica che si allunga, apertura in ~120 ms
+- [x] Profilo liquido: due gocce con ritardi diversi che seguono il cursore
+- [x] Ingrandimento delle icone al passaggio del cursore, con i bersagli fermi
 - [ ] Lo stato `Suppressed`
 - [x] Zona trigger con soglia doppia tempo + distanza, isteresi in uscita
 - [ ] Esclusioni esplicite per hot corner e snap layout (oggi si usa solo l'area di lavoro)

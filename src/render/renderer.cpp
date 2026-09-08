@@ -4,6 +4,7 @@
 #include "render/icons.h"
 
 #include <algorithm>
+#include <cmath>
 
 using winrt::com_ptr;
 
@@ -262,15 +263,46 @@ void Renderer::DrawBadge(const ui::Widget& w, const ui::RectF& anchor) {
     }
 }
 
+// Quanto questo widget e' ingrandito, 0-1, in base a quanto il cursore gli e'
+// vicino lungo la barra. E' l'ingrandimento della dock del Mac, con una
+// differenza voluta: qui cresce solo cio' che si VEDE, mentre il rettangolo
+// cliccabile resta dov'era. Far muovere i bersagli sotto il cursore mentre lo
+// si avvicina e' il difetto per cui quell'effetto viene disattivato da meta'
+// delle persone che lo provano.
+float Renderer::Magnification(const ui::Widget& w, const DrawState& state) const {
+    if (state.magnify <= 0.01f || state.cursorAlong < 0.f) return 0.f;
+
+    const bool  vertical = (state.edge == Edge::Left || state.edge == Edge::Right);
+    const float center   = vertical ? (w.rect.y + w.rect.h * 0.5f)
+                                    : (w.rect.x + w.rect.w * 0.5f);
+    const float d = std::fabs(center - state.cursorAlong);
+
+    constexpr float kSigma = 42.f;   // due bottoni di raggio: oltre non si sente
+    return state.magnify * std::exp(-(d * d) / (2.f * kSigma * kSigma));
+}
+
 void Renderer::DrawButtonLike(const ui::Widget& w, const DrawState& state) {
     const bool named     = !w.id.empty();
     const bool isPressed = named && w.id == state.pressed;
     const bool isHovered = named && w.id == state.hovered && !isPressed;
     const bool isOn      = (w.type == ui::WidgetType::Toggle) && w.on;
 
-    if (isOn)             FillRounded(w.rect, theme_.widgetRadius, theme_.accent);
-    else if (isPressed)   FillRounded(w.rect, theme_.widgetRadius, theme_.pressed);
-    else if (isHovered)   FillRounded(w.rect, theme_.widgetRadius, theme_.hover);
+    const float mag = Magnification(w, state);
+
+    // La velatura cresce col cursore: e' quella a dare la sensazione che la
+    // barra reagisca a dove stai puntando, prima ancora che tu ci arrivi.
+    ui::RectF pill = w.rect;
+    if (mag > 0.01f) {
+        const float grow = mag * 3.5f;
+        pill = ui::RectF{w.rect.x - grow, w.rect.y - grow,
+                         w.rect.w + grow * 2.f, w.rect.h + grow * 2.f};
+    }
+
+    if (isOn)             FillRounded(pill, theme_.widgetRadius + mag * 2.f, theme_.accent);
+    else if (isPressed)   FillRounded(pill, theme_.widgetRadius + mag * 2.f, theme_.pressed);
+    else if (isHovered)   FillRounded(pill, theme_.widgetRadius + mag * 2.f, theme_.hover);
+    else if (mag > 0.05f) FillRounded(pill, theme_.widgetRadius + mag * 2.f,
+                                      theme_.hover.withAlpha(theme_.hover.a * mag * 0.7f));
 
     Color fg = theme_.text;
     if (!w.enabled) fg = theme_.textDisabled;
@@ -295,6 +327,18 @@ void Renderer::DrawButtonLike(const ui::Widget& w, const DrawState& state) {
     // si vede e non al rettangolo cliccabile.
     ui::RectF glyphBox = w.rect;
 
+    // L'icona si ingrandisce con una trasformazione attorno al proprio centro:
+    // creare un formato di testo per ogni dimensione intermedia costerebbe una
+    // allocazione per fotogramma, e sarebbero decine al secondo.
+    D2D1_MATRIX_3X2_F saved{};
+    rt_->GetTransform(&saved);
+    if (mag > 0.01f) {
+        const float scale = 1.f + mag * 0.42f;
+        const D2D1_POINT_2F c = D2D1::Point2F(w.rect.x + w.rect.w * 0.5f,
+                                              w.rect.y + w.rect.h * 0.5f);
+        rt_->SetTransform(D2D1::Matrix3x2F::Scale(scale, scale, c) * saved);
+    }
+
     if (hasIcon && !hasLabel) {
         DrawGlyphOrText(iconText, iconIsGlyph, w.rect, fg, true);
         glyphBox = ui::RectF{w.rect.x + (w.rect.w - m.iconSize) * 0.5f,
@@ -312,7 +356,113 @@ void Renderer::DrawButtonLike(const ui::Widget& w, const DrawState& state) {
         DrawGlyphOrText(w.label, false, w.rect, fg, true);
     }
 
+    rt_->SetTransform(saved);
     DrawBadge(w, glyphBox);
+}
+
+
+// ── Il profilo liquido ───────────────────────────────────────────────────────
+//
+// Si costruisce in coordinate (u, v): `u` corre lungo la barra, `v` attraverso,
+// misurata dal bordo dello schermo verso l'interno. In questo sistema i quattro
+// bordi sono lo stesso problema, e la trasformazione finale e' quattro righe
+// invece di quattro versioni della forma.
+//
+//   v = 0            il bordo dello schermo
+//   v = thickness    il fianco interno della barra: e' qui che nascono le gocce
+//   v > thickness    lo spazio in cui la goccia si allunga verso il cursore
+//
+// Gli angoli sono cubiche e non archi: una cubica con i controlli a 0,5523 del
+// raggio approssima un quarto di cerchio meglio di quanto si veda a schermo, e
+// non obbliga a ragionare sul verso di percorrenza degli archi.
+winrt::com_ptr<ID2D1PathGeometry> Renderer::BuildSilhouette(
+    const DrawState& state, float start, float along, float thickness, float radius) const {
+    constexpr float kArc = 0.5523f;
+
+    winrt::com_ptr<ID2D1PathGeometry> geo;
+    if (FAILED(d2dFactory_->CreatePathGeometry(geo.put()))) return nullptr;
+
+    winrt::com_ptr<ID2D1GeometrySink> sink;
+    if (FAILED(geo->Open(sink.put()))) return nullptr;
+
+    const float w = static_cast<float>(widthPx_) * 96.f / static_cast<float>(dpi_);
+    const float h = static_cast<float>(heightPx_) * 96.f / static_cast<float>(dpi_);
+
+    // (u, v) -> punto sulla superficie.
+    const Edge edge = state.edge;
+    auto P = [&](float u, float v) -> D2D1_POINT_2F {
+        switch (edge) {
+            case Edge::Right:  return D2D1::Point2F(w - v, u);
+            case Edge::Left:   return D2D1::Point2F(v, u);
+            case Edge::Bottom: return D2D1::Point2F(u, h - v);
+            case Edge::Top:    return D2D1::Point2F(u, v);
+        }
+        return D2D1::Point2F(u, v);
+    };
+    auto Bez = [&](float u1, float v1, float u2, float v2, float u3, float v3) {
+        sink->AddBezier(D2D1::BezierSegment(P(u1, v1), P(u2, v2), P(u3, v3)));
+    };
+
+    const float u0 = start;
+    const float u1 = start + along;
+
+    // Le gocce, ordinate e ritagliate perche' non escano dai raccordi e non si
+    // accavallino: due bolle sovrapposte darebbero un profilo che rientra su se
+    // stesso, e sembrerebbe un errore di disegno invece che del liquido.
+    struct Local { float u, a, w; };
+    Local drops[2];
+    int   n = 0;
+    float needed = 0.f;
+    for (int i = 0; i < state.bulgeCount && i < 2; ++i) {
+        const Bulge& b = state.bulges[i];
+        if (b.amount < 0.3f || b.width < 1.f) continue;
+        drops[n] = Local{b.along, b.amount, b.width};
+        needed += b.width * 2.f;
+        ++n;
+    }
+    if (n == 2 && drops[0].u > drops[1].u) std::swap(drops[0], drops[1]);
+
+    // Il raggio cede alla goccia, non il contrario. A riposo la pastiglia e'
+    // lunga una cinquantina di punti: con raccordi da venti, di bordo dritto su
+    // cui gonfiarsi ne restano sei, e la goccia non si vedrebbe mai. Stringendo
+    // i raccordi quando serve, la pastiglia si assottiglia alle estremita' e
+    // spinge in mezzo — che e' esattamente cio' che fa la tensione superficiale.
+    float r = std::min(radius, std::min(along, thickness) * 0.5f);
+    if (n > 0) r = std::min(r, std::max(3.f, (along - needed) * 0.5f));
+
+    const float lo = u0 + r;
+    const float hi = u1 - r;
+    float cursor = lo;
+
+    sink->BeginFigure(P(u0, thickness - r), D2D1_FIGURE_BEGIN_FILLED);
+    Bez(u0, thickness - r + r * kArc, u0 + r - r * kArc, thickness, u0 + r, thickness);
+
+    for (int i = 0; i < n; ++i) {
+        float bu = std::clamp(drops[i].u, lo, hi);
+        float bw = drops[i].w;
+
+        // Non deve sconfinare nei raccordi ne' nella goccia precedente.
+        bw = std::min(bw, std::min(bu - cursor, hi - bu));
+        if (bw < 2.f) continue;
+
+        const float a = drops[i].a;
+        sink->AddLine(P(bu - bw, thickness));
+        Bez(bu - bw * 0.45f, thickness, bu - bw * 0.30f, thickness + a, bu, thickness + a);
+        Bez(bu + bw * 0.30f, thickness + a, bu + bw * 0.45f, thickness, bu + bw, thickness);
+        cursor = bu + bw;
+    }
+
+    sink->AddLine(P(hi, thickness));
+    Bez(u1 - r + r * kArc, thickness, u1, thickness - r + r * kArc, u1, thickness - r);
+
+    // Il fianco esterno esce dalla superficie: D2D lo ritaglia, e restano
+    // arrotondati solo gli angoli che si vedono.
+    sink->AddLine(P(u1, -r - 2.f));
+    sink->AddLine(P(u0, -r - 2.f));
+    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+
+    if (FAILED(sink->Close())) return nullptr;
+    return geo;
 }
 
 void Renderer::DrawWidget(const ui::Widget& w, const DrawState& state) {
@@ -386,10 +536,8 @@ void Renderer::Draw(const ui::Widget& root, const DrawState& state) {
     // essere sostituita.
     const float along = (state.shapeAlong > 0.f) ? std::clamp(state.shapeAlong, 8.f, full) : full;
 
-    // Il raggio non e' fisso: sulla pastiglia corta vale la meta' del lato piu'
-    // corto, cosi' resta uno stadio perfetto e non un rettangolo smussato.
+    // Lo spessore della superficie: barra piu' spazio per le gocce.
     const float thickness = vertical ? w : h;
-    const float radius    = std::min(theme_.cornerRadius, std::min(along, thickness) * 0.5f);
 
     // Il centro della forma sulla superficie, limitato perche' non sbordi. A
     // lunghezza piena il limite lo riporta da solo a meta': non serve un caso
@@ -398,28 +546,17 @@ void Renderer::Draw(const ui::Widget& root, const DrawState& state) {
     const float center   = std::clamp(state.shapeCenter, halfFrac, 1.f - halfFrac);
     const float start    = center * full - along * 0.5f;
 
-    ui::RectF body;
-    if (vertical) {
-        body = ui::RectF{0.f, start, w, along};
-    } else {
-        body = ui::RectF{start, 0.f, along, h};
+    // Lo spessore della barra vera. Cio' che avanza fino al bordo della
+    // superficie e' lo spazio in cui le gocce si allungano.
+    const float barThick = (state.barThickness > 0.f)
+                               ? std::min(state.barThickness, thickness)
+                               : thickness;
+    const float radius   = std::min(theme_.cornerRadius, std::min(along, barThick) * 0.5f);
+
+    if (auto geo = BuildSilhouette(state, start, along, barThick, radius)) {
+        rt_->FillGeometry(geo.get(), Brush(theme_.background));
+        rt_->DrawGeometry(geo.get(), Brush(theme_.border), theme_.borderWidth);
     }
-
-    // Gli angoli si arrotondano solo dal lato rivolto verso lo schermo: quelli
-    // sul bordo si ottengono estendendo il rettangolo oltre la superficie, che
-    // D2D ritaglia. Costa tre righe invece di una path geometry.
-    const float over = radius + 1.f;
-    switch (state.edge) {
-        case Edge::Bottom: body.h += over; break;
-        case Edge::Top:    body.y -= over; body.h += over; break;
-        case Edge::Left:   body.x -= over; body.w += over; break;
-        case Edge::Right:  body.w += over; break;
-    }
-
-    FillRounded(body, radius, theme_.background);
-
-    const D2D1_ROUNDED_RECT border = D2D1::RoundedRect(Rect(body), radius, radius);
-    rt_->DrawRoundedRectangle(border, Brush(theme_.border), theme_.borderWidth);
 
     if (state.contentAlpha > 0.01f) {
         contentAlpha_ = std::clamp(state.contentAlpha, 0.f, 1.f);

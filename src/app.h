@@ -108,6 +108,14 @@ private:
     float alongTarget_ = 0.f;
 
     float grow_        = 0.f;   // 0-1, quanto il cursore e' vicino al bordo
+
+    // Le due gocce: stessa meta, ritardi diversi. E' la differenza fra i due
+    // inseguimenti a leggersi come liquido — con un ritardo solo si vede una
+    // protuberanza agganciata al mouse, con due si vede qualcosa che scorre.
+    float dropFast_ = 0.f;      // posizione lungo la superficie, in DIP
+    float dropSlow_ = 0.f;
+    float magnify_  = 0.f;      // 0-1, ingrandimento delle icone sotto il cursore
+    float cursorAlong_ = -1.f;  // cursore lungo la superficie, in DIP
     float shapeCenter_ = 0.5f;  // dove sta la pastiglia sulla superficie
     float drawnAlong_  = -1.f;  // ultima lunghezza disegnata: evita ridisegni inutili
     float drawnCenter_ = -1.f;

@@ -29,6 +29,13 @@ struct PlacementConfig {
     // finestra sparisce del tutto e resta solo la zona sensibile.
     bool  peek         = true;
     int   peekPx       = 5;
+
+    // Spazio davanti alla barra, dentro la finestra, in cui la goccia puo'
+    // sporgere verso il cursore. Senza, la forma occuperebbe tutta la
+    // superficie e non avrebbe dove deformarsi: D2D la ritaglierebbe e la
+    // goccia non si vedrebbe. E' superficie trasparente, quindi non copre
+    // niente e non riceve click.
+    float bulgeRoomDip = 26.f;
 };
 
 struct Placement {
@@ -45,6 +52,8 @@ struct Placement {
     // La barra non e' inchiodata al centro del bordo: scorre lungo di esso per
     // andare incontro al cursore. `revealed` e `hidden` sono calcolati con la
     // barra centrata, e chi disegna passa la posizione vera a Slide().
+    int  thicknessPx  = 0;      // spessore della sola barra, senza lo spazio della goccia
+    int  bulgeRoomPx  = 0;
     bool horizontal   = true;   // il bordo lungo e' orizzontale
     int  alongDefault = 0;      // coordinata lungo il bordo, a barra centrata
     int  alongMin     = 0;      // limiti entro cui puo' scorrere senza uscire

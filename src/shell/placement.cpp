@@ -48,6 +48,10 @@ Placement Compute(const PlacementConfig& cfg, HMONITOR monitor, float contentExt
     if (workW <= 0 || workH <= 0) return p;
 
     const int  thickness  = Dip(cfg.thicknessDip, p.dpi);
+    const int  room       = Dip(std::max(0.f, cfg.bulgeRoomDip), p.dpi);
+    // La finestra e' piu' spessa della barra: la differenza e' lo spazio in cui
+    // la goccia si allunga verso il cursore.
+    const int  surface    = thickness + room;
     const bool horizontal = (cfg.edge == Edge::Bottom || cfg.edge == Edge::Top);
     const int  span       = horizontal ? workW : workH;
 
@@ -66,7 +70,9 @@ Placement Compute(const PlacementConfig& cfg, HMONITOR monitor, float contentExt
         extent = std::clamp(wanted, thickness * 2, cap);
     }
 
-    p.sizePx = horizontal ? SIZE{extent, thickness} : SIZE{thickness, extent};
+    p.sizePx      = horizontal ? SIZE{extent, surface} : SIZE{surface, extent};
+    p.thicknessPx = thickness;
+    p.bulgeRoomPx = room;
 
     // Posizione lungo il bordo, secondo l'allineamento.
     const int origin = horizontal ? p.work.left : p.work.top;
@@ -104,34 +110,38 @@ Placement Compute(const PlacementConfig& cfg, HMONITOR monitor, float contentExt
     const RECT screen = mi.rcMonitor;
 
     switch (cfg.edge) {
+        // In tutti e quattro i casi la finestra e' spessa `surface`, e la barra
+        // vera occupa i `thickness` pixel appoggiati al bordo: i `room` che
+        // avanzano stanno davanti, verso lo schermo, e sono lo spazio della
+        // goccia.
         case Edge::Bottom: {
-            const int top = peek ? p.work.bottom - peek : screen.bottom;
-            p.revealed = {along, p.work.bottom - thickness, along + extent, p.work.bottom};
-            p.hidden   = {along, top, along + extent, top + thickness};
+            const int barTop = peek ? p.work.bottom - peek : screen.bottom;
+            p.revealed = {along, p.work.bottom - surface, along + extent, p.work.bottom};
+            p.hidden   = {along, barTop - room, along + extent, barTop - room + surface};
             p.trigger  = {p.work.left, p.work.bottom - trigger, p.work.right, p.work.bottom};
             break;
         }
 
         case Edge::Top: {
-            const int bottom = peek ? p.work.top + peek : screen.top;
-            p.revealed = {along, p.work.top, along + extent, p.work.top + thickness};
-            p.hidden   = {along, bottom - thickness, along + extent, bottom};
+            const int barBottom = peek ? p.work.top + peek : screen.top;
+            p.revealed = {along, p.work.top, along + extent, p.work.top + surface};
+            p.hidden   = {along, barBottom - thickness, along + extent, barBottom - thickness + surface};
             p.trigger  = {p.work.left, p.work.top, p.work.right, p.work.top + trigger};
             break;
         }
 
         case Edge::Left: {
-            const int right = peek ? p.work.left + peek : screen.left;
-            p.revealed = {p.work.left, along, p.work.left + thickness, along + extent};
-            p.hidden   = {right - thickness, along, right, along + extent};
+            const int barRight = peek ? p.work.left + peek : screen.left;
+            p.revealed = {p.work.left, along, p.work.left + surface, along + extent};
+            p.hidden   = {barRight - thickness, along, barRight - thickness + surface, along + extent};
             p.trigger  = {p.work.left, p.work.top, p.work.left + trigger, p.work.bottom};
             break;
         }
 
         case Edge::Right: {
-            const int left = peek ? p.work.right - peek : screen.right;
-            p.revealed = {p.work.right - thickness, along, p.work.right, along + extent};
-            p.hidden   = {left, along, left + thickness, along + extent};
+            const int barLeft = peek ? p.work.right - peek : screen.right;
+            p.revealed = {p.work.right - surface, along, p.work.right, along + extent};
+            p.hidden   = {barLeft - room, along, barLeft - room + surface, along + extent};
             p.trigger  = {p.work.right - trigger, p.work.top, p.work.right, p.work.bottom};
             break;
         }

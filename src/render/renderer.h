@@ -34,6 +34,16 @@ namespace omni::render {
 // l'albero vecchio diventerebbe pendente nell'istante in cui cambia il
 // programma in primo piano, cioe' proprio mentre il mouse e' sulla barra. Un id
 // che non c'e' piu' semplicemente non corrisponde a niente.
+// Una goccia: un rigonfiamento del bordo interno della barra, verso il
+// cursore. Resta sempre attaccata — non e' una forma a se' che si stacca, e'
+// il profilo della barra che si allunga — perche' e' quello a leggersi come
+// tensione superficiale invece che come un'icona che vola.
+struct Bulge {
+    float along  = 0.f;   // dove sta, in DIP lungo la barra
+    float amount = 0.f;   // quanto sporge, in DIP
+    float width  = 26.f;  // semiampiezza: stretta = goccia tirata, larga = onda
+};
+
 struct DrawState {
     std::string_view hovered;
     std::string_view pressed;
@@ -58,6 +68,21 @@ struct DrawState {
     float shapeAlong   = 0.f;   // 0 = usa tutta la lunghezza della superficie
     float shapeCenter  = 0.5f;
     float contentAlpha = 1.f;
+
+    // Lo spessore della sola barra e lo spazio davanti in cui le gocce possono
+    // sporgere. La superficie e' la somma dei due.
+    float barThickness = 0.f;   // 0 = tutta la superficie, nessuno spazio per le gocce
+
+    // Due gocce e non una: la seconda insegue con piu' ritardo, e sono i due
+    // ritardi diversi a far sembrare che ci sia del liquido invece di una
+    // singola protuberanza agganciata al mouse.
+    Bulge bulges[2];
+    int   bulgeCount = 0;
+
+    // Posizione del cursore lungo la barra, in DIP sulla superficie; < 0 se il
+    // cursore non e' sulla barra. Ingrandisce le icone vicine.
+    float cursorAlong = -1.f;
+    float magnify     = 0.f;   // 0-1, quanto l'ingrandimento e' attivo
 };
 
 class Renderer {
@@ -98,7 +123,15 @@ private:
     bool CreateFormats();
     void Present(float opacity);
 
+    // Il profilo della barra, gocce comprese. Costruito in coordinate
+    // lungo/attraverso e poi trasformato: cosi' esiste una sola versione della
+    // forma invece di quattro, una per bordo.
+    winrt::com_ptr<ID2D1PathGeometry> BuildSilhouette(const DrawState& state,
+                                                      float start, float along,
+                                                      float thickness, float radius) const;
+
     void DrawWidget(const ui::Widget& w, const DrawState& state);
+    float Magnification(const ui::Widget& w, const DrawState& state) const;
     void DrawButtonLike(const ui::Widget& w, const DrawState& state);
     void DrawBadge(const ui::Widget& w, const ui::RectF& anchor);
     void FillRounded(const ui::RectF& r, float radius, const Color& c);
