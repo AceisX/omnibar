@@ -277,7 +277,7 @@ float Renderer::Magnification(const ui::Widget& w, const DrawState& state) const
                                     : (w.rect.x + w.rect.w * 0.5f);
     const float d = std::fabs(center - state.cursorAlong);
 
-    constexpr float kSigma = 42.f;   // due bottoni di raggio: oltre non si sente
+    constexpr float kSigma = 36.f;   // poco piu' di un bottone di raggio
     return state.magnify * std::exp(-(d * d) / (2.f * kSigma * kSigma));
 }
 
@@ -293,7 +293,7 @@ void Renderer::DrawButtonLike(const ui::Widget& w, const DrawState& state) {
     // barra reagisca a dove stai puntando, prima ancora che tu ci arrivi.
     ui::RectF pill = w.rect;
     if (mag > 0.01f) {
-        const float grow = mag * 3.5f;
+        const float grow = mag * 2.f;
         pill = ui::RectF{w.rect.x - grow, w.rect.y - grow,
                          w.rect.w + grow * 2.f, w.rect.h + grow * 2.f};
     }
@@ -333,7 +333,9 @@ void Renderer::DrawButtonLike(const ui::Widget& w, const DrawState& state) {
     D2D1_MATRIX_3X2_F saved{};
     rt_->GetTransform(&saved);
     if (mag > 0.01f) {
-        const float scale = 1.f + mag * 0.42f;
+        // Un quinto, non la meta'. L'ingrandimento deve dire "sei qui", non
+        // riorganizzare la barra sotto il cursore.
+        const float scale = 1.f + mag * 0.20f;
         const D2D1_POINT_2F c = D2D1::Point2F(w.rect.x + w.rect.w * 0.5f,
                                               w.rect.y + w.rect.h * 0.5f);
         rt_->SetTransform(D2D1::Matrix3x2F::Scale(scale, scale, c) * saved);

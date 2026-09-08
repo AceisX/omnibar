@@ -471,6 +471,68 @@ La strategia, in ordine di preferenza:
    impostazioni spiegano in una riga perché e cosa installare. Meglio un'assenza spiegata di un
    numero inventato.
 
+### 10.2 · Il provider generico: capire un'app senza averla mai vista
+
+Il modello "un adapter per ogni programma" ha un difetto che si vede solo dopo: **finché
+qualcuno non scrive l'adapter, la barra su quel programma non sa fare niente.** Con quaranta
+programmi installati, trentacinque restano vuoti. E siccome nessuno scriverà mai un adapter
+per il gestionale aziendale di chi legge, per molti utenti la barra resterebbe vuota per
+sempre.
+
+Su Windows esiste però un canale che sa parlare di **qualunque** applicazione con
+un'interfaccia accessibile: **UI Automation**. È l'API che usano gli screen reader — quindi
+out-of-process, senza injection, senza privilegi, dentro i vincoli della §2.
+
+Cosa si può sapere di un'app **senza aver scritto una riga per lei**:
+
+| | |
+|---|---|
+| I suoi comandi | menu, barre degli strumenti, schede della ribbon, con il loro **nome** |
+| Come invocarli | pattern `Invoke`, `Toggle`, `Value`, `Selection`, `ExpandCollapse` |
+| **La loro scorciatoia** | proprietà `AcceleratorKey` e `AccessKey` |
+| Il testo e la selezione | pattern `Text`: cosa c'è scritto, cosa è selezionato, dov'è il cursore |
+| Quando qualcosa cambia | eventi di focus, di proprietà, di struttura |
+
+La terza riga è quella che vale più delle altre messe insieme: **UIA dice quale scorciatoia
+ha ogni comando.** Significa che la barra può *generare da sola* il profilo dichiarativo di
+un programma che nessuno ha mai adattato — leggerne i comandi, leggerne le scorciatoie, e
+proporli come bottoni. L'adapter scritto a mano smette di essere il prerequisito e diventa un
+miglioramento.
+
+Il modello si ribalta:
+
+| Prima | Con il provider generico |
+|---|---|
+| niente finché qualcuno non scrive l'adapter | **supporto di base ovunque**, subito |
+| l'adapter è il prerequisito | l'adapter aggiunge ciò che il generico non vede |
+| le app sconosciute sono invisibili | le app sconosciute si spiegano da sole |
+
+Gli altri canali universali, che non sono UIA ma valgono lo stesso principio — **uno vale per
+tutte le app**:
+
+| Canale | Cosa raccoglie da *tutte* le applicazioni |
+|---|---|
+| `SetWinEventHook` out-of-context | foreground, focus, finestre create, menu aperti, allarmi |
+| `UserNotificationListener` | tutte le notifiche toast, di qualunque app |
+| SMTC | riproduzione multimediale, di qualunque player |
+| Core Audio | volume e picco per applicazione, chi sta suonando |
+| Appunti | tutto ciò che l'utente copia |
+| Shell COM | cartella corrente, selezione, file recenti |
+| Registro dei verbi | i comandi che ogni app registra nel menu contestuale |
+
+**I limiti, detti per intero.** UIA può essere lento su alberi grandi: va interrogato su un
+thread a parte, con cache, in modo pigro, e mai a ogni cambio di finestra senza pensarci —
+un provider generico che blocca la barra sarebbe peggio di nessun provider. Alcune
+applicazioni espongono poco o niente: giochi, Win32 vecchi, Electron con l'accessibilità
+spenta. I nomi dei comandi arrivano nella lingua dell'applicazione, non in quella della barra.
+E il lettore di notifiche richiede un consenso esplicito ed è sensibile per la privacy: è una
+capability, non un default.
+
+**Cosa NON è.** Non è un modo per "leggere tutto quello che le app mandano": non esiste un
+rubinetto unico, e prometterlo sarebbe disonesto. È un insieme di canali pubblici che,
+sommati, coprono una parte sorprendente del problema — e soprattutto coprono il caso peggiore,
+quello dell'applicazione che nessuno ha previsto.
+
 ---
 
 ## 11 · I moduli che rispondono al "monitor solo"

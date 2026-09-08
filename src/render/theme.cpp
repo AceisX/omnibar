@@ -43,7 +43,7 @@ ui::Metrics Theme::metrics() const {
     m.padCross     = 7.f;
     m.buttonMin    = 30.f;
     m.buttonPadX   = 9.f;
-    m.iconSize     = 15.f;
+    m.iconSize     = 13.f;
     m.labelGap     = 6.f;
     m.separatorLen = 1.f;
     m.separatorPad = 4.f;

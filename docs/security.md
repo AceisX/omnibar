@@ -155,7 +155,33 @@ chiedere qualcosa alla barra.
 
 ---
 
-## 6 · Segnalare un problema
+## 6 · La firma non è un dettaglio di rilascio
+
+**Constatato sul campo, non previsto a tavolino:** su Windows 11 con **Smart App Control**
+attivo, un eseguibile non firmato viene bloccato all'avvio. Non avvisato — bloccato. Il log di
+Code Integrity dice `did not meet the Enterprise signing level requirements`.
+
+Tre conseguenze che cambiano le priorità del progetto:
+
+1. **Firmare non è un compito della fase 6.** Senza firma OmniBar non è provabile su una
+   macchina con Smart App Control attivo — nemmeno da chi la sta scrivendo. Va anticipata al
+   momento in cui esiste qualcosa da far girare a qualcun altro.
+2. **Un certificato autofirmato non basta.** Smart App Control non guarda se il certificato è
+   nella tua radice attendibile: guarda se il file è *verificato e reputato* secondo il
+   servizio Microsoft. Serve un certificato di code signing vero, e la reputazione si accumula
+   (con un certificato EV è immediata).
+3. **Disattivare Smart App Control è una porta a senso unico.** Una volta spento non si può
+   riaccendere: per riaverlo serve reinstallare Windows. Non è una cosa da consigliare a
+   nessuno alla leggera, e tantomeno da fare al posto suo.
+
+È anche la conferma pratica del perché i vincoli della §2 dell'architettura esistono: un
+programma che vuole stare su milioni di macchine deve superare i controlli di sistema, e ogni
+comportamento sospetto in più — un driver, un hook, un'iniezione — è un motivo in più per
+essere bloccato prima ancora di partire.
+
+---
+
+## 7 · Segnalare un problema
 
 Finché il progetto non ha una release pubblica: aprire una issue. Dopo la prima release, una
 security policy con contatto privato e finestra di divulgazione — e questo paragrafo verrà

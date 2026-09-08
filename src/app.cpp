@@ -22,8 +22,13 @@ namespace {
 constexpr UINT kSlowTickMs = 100;
 constexpr UINT kFastTickMs = 8;
 
-constexpr UINT kOpenMs    = 200;   // era 300: si vedeva, e vedere un'apertura vuol dire che e' lenta
-constexpr UINT kCloseMs   = 160;
+// Reattivita' e tranquillita' non sono la stessa manopola, ed e' l'errore che
+// avevo fatto accorciando tutto. La reattivita' si sente da QUANDO il movimento
+// comincia — ed e' l'attesa di conferma piu' il passo del polling a deciderla.
+// La tranquillita' si sente da COME si posa, e quella vuole tempo. Percio': si
+// parte quasi subito, ma poi si prende il suo tempo ad arrivare.
+constexpr UINT kOpenMs    = 290;
+constexpr UINT kCloseMs   = 230;
 constexpr UINT kAnimTickMs = 8;
 constexpr UINT kUnhoverMs  = 400;
 
@@ -34,24 +39,31 @@ constexpr float kOutsideMarginDip = 6.f;
 // seguire da lontano e' un accenno discreto, crescere da lontano sarebbe
 // un'animazione che parte ogni volta che passi da quella parte dello schermo.
 constexpr float kFollowDip = 190.f;
-constexpr float kGrowDip   = 80.f;
+constexpr float kGrowDip   = 90.f;
 
 // La pastiglia a riposo, e quanto si allunga quando il cursore si avvicina.
-constexpr float kHandleDip     = 46.f;
-constexpr float kHandleGrowDip = 30.f;
+// Era corta la meta': con quarantasei punti su una barra da trecentottanta
+// sembrava un ritaglio, non un fianco. Un elemento sul bordo dello schermo si
+// legge come "parte della finestra" solo se ha una lunghezza propria.
+constexpr float kHandleDip     = 104.f;
+constexpr float kHandleGrowDip = 34.f;
 
 // Le gocce. La prima insegue in fretta e si assottiglia avvicinandosi — e' la
 // tensione superficiale: piu' la tiri, piu' si stringe. La seconda e' piu'
 // bassa, piu' larga e piu' lenta, e fa da scia.
-constexpr float kDropMaxDip   = 17.f;
-constexpr float kDropWideDip  = 30.f;   // semiampiezza da lontano
-constexpr float kDropTightDip = 15.f;   // semiampiezza da vicino
-constexpr float kDropFastTau  = 45.f;
-constexpr float kDropSlowTau  = 150.f;
+// Meno di prima, di proposito. Una goccia che si vede e' un effetto; una che
+// si nota e' una distrazione, e questa sta sul bordo dello schermo tutto il
+// giorno. Anche il restringimento e' piu' blando: assottigliarsi in fretta
+// legge come nervoso.
+constexpr float kDropMaxDip   = 9.f;
+constexpr float kDropWideDip  = 36.f;   // semiampiezza da lontano
+constexpr float kDropTightDip = 24.f;   // semiampiezza da vicino
+constexpr float kDropFastTau  = 80.f;
+constexpr float kDropSlowTau  = 240.f;
 
 // Costante di tempo dell'inseguimento. Piu' e' bassa piu' e' reattivo; sotto i
 // 40 ms smette di sembrare un liquido e comincia a sembrare un incollaggio.
-constexpr float kFollowTauMs = 65.f;
+constexpr float kFollowTauMs = 105.f;
 
 // Apertura: parte decisa, supera di poco l'arrivo e rientra. E' quel rientro a
 // far sembrare il movimento fluido invece che meccanico — un ease-out puro si
@@ -59,7 +71,10 @@ constexpr float kFollowTauMs = 65.f;
 // l'oltrepasso sembra che la barra abbia una massa.
 float EaseOutBack(float t) {
     t = std::clamp(t, 0.f, 1.f);
-    constexpr float kOvershoot = 1.15f;
+    // Oltrepasso appena percettibile. A 1,15 su una corsa di settanta punti
+    // erano tre pixel di rimbalzo, e si vedevano: un rimbalzo che si vede non
+    // e' massa, e' un tic.
+    constexpr float kOvershoot = 1.05f;
     const float inv = t - 1.f;
     return 1.f + inv * inv * ((kOvershoot + 1.f) * inv + kOvershoot);
 }
@@ -138,7 +153,7 @@ bool App::Init(HINSTANCE inst) {
     // mezzo secondo prima che succedesse qualcosa. Adesso il richiamo della
     // pastiglia da' un riscontro immediato, quindi la conferma puo' essere
     // molto piu' breve senza diventare nervosa.
-    trigger_.SetConfig({70, 40});
+    trigger_.SetConfig({90, 40});
 
     // Si parte nascosti, gia' fuori schermo, e senza mai rubare il focus.
     slide_ = slideTarget_ = 0.f;

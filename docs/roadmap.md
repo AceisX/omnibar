@@ -13,6 +13,10 @@ non sono qualcosa da "sistemare alla fine".
 
 **Collauda:** niente. Prepara il terreno.
 
+> **Anticipato dalla fase 6:** la firma del codice. Su Windows 11 con Smart App Control attivo
+> un eseguibile non firmato viene bloccato all'avvio, quindi senza firma il programma non è
+> provabile — nemmeno da chi lo scrive. Vedi [security.md §6](security.md).
+
 - [x] Repo, licenza MIT, CI GitHub Actions
 - [x] Toolchain portable in `tools\` (ereditata da MiniBar: MSVC, CMake, Ninja da pacchetti ufficiali)
 - [x] CMake, preset locale (Ninja) e preset CI (Visual Studio), CRT statica
@@ -22,6 +26,7 @@ non sono qualcosa da "sistemare alla fine".
 - [x] Il gate della CI sulla dimensione dell'eseguibile
 - [ ] Il gate della CI su RAM e tempo di avvio
 - [ ] Template di issue e PR
+- [ ] **Firma del codice** — bloccante per provare su macchine con Smart App Control
 
 **Fatto quando:** `cmake --build` produce un `omnibar.exe` che parte, legge la configurazione,
 scrive un log e si chiude pulito.
@@ -97,6 +102,9 @@ il drag&drop.
 - [ ] Modulo **shelf** — `IDropTarget`, miniature, persistenza, drag in uscita
 - [ ] Modulo **power** — batteria, piano energetico, luminosità, night light
 - [ ] Modulo **window** — snap in zone, sposta su metà/terzo, modalità focus
+- [ ] Modulo **discover** — il provider generico via UI Automation (§10.2): comandi e
+      scorciatoie letti da qualunque app, e profilo proposto in automatico. Va **prima** degli
+      adapter, non dopo: cambia cosa agli adapter resta da fare
 
 **Fatto quando:** la barra è già utile tutti i giorni anche senza estensioni esterne.
 
@@ -149,7 +157,7 @@ a nessuno.
       nativo e WebView2 si fa **qui**, quando si sa quanto è complesso davvero: fino a questo
       punto le due strade sono identiche
 - [ ] Prima esecuzione guidata: bordo, profili suggeriti in base ai programmi installati
-- [ ] Installer, winget, scoop, firma del codice
+- [ ] Installer, winget, scoop
 - [ ] `omnibar-helper.exe` elevato, opzionale, con la sua revisione di sicurezza
 - [ ] Aggiornamento con conferma dell'utente, mai silenzioso
 - [ ] Documentazione utente, sito, galleria delle estensioni
