@@ -19,7 +19,13 @@ namespace omni::ui {
 // Costanti di disegno che il layout deve conoscere per misurare. Sono in DIP e
 // arrivano dal tema: qui non ci sono numeri magici, solo il loro trasporto.
 struct Metrics {
-    float padding      = 8.f;   // margine interno della barra
+    // Due margini, non uno. Con angoli molto arrotondati il contenuto deve
+    // stare piu' lontano dalle estremita' della barra che dai suoi fianchi,
+    // altrimenti il primo e l'ultimo bottone finiscono dentro la curva. Un
+    // margine unico costringerebbe a scegliere fra un bottone schiacciato e
+    // due bottoni tagliati.
+    float padAlong     = 12.f;  // margine alle due estremita' della barra
+    float padCross     = 7.f;   // margine sui fianchi
     float buttonMin    = 34.f;  // lato minimo di un bottone con la sola icona
     float buttonPadX   = 10.f;  // padding orizzontale di un bottone con testo
     float iconSize     = 16.f;
@@ -27,10 +33,23 @@ struct Metrics {
     float separatorLen = 1.f;   // spessore della linea
     float separatorPad = 5.f;   // aria ai due lati del separatore
 
+    // Modalita' compatta: sui bordi laterali la barra e' larga quaranta punti
+    // e il testo non ci sta. Invece di troncarlo — che si legge come un bug —
+    // le etichette spariscono e restano le icone, che a quella dimensione
+    // dicono la stessa cosa. E' la regola gia' scritta in architecture.md §7.3:
+    // le etichette se ne vanno prima delle icone.
+    //
+    // Un bottone di solo testo, che un'icona non ce l'ha, resta con il testo:
+    // toglierglielo lo renderebbe un rettangolo vuoto.
+    bool compact = false;
+
     // Larghezza del testo in DIP. `icon` distingue il font delle icone da
     // quello del testo: hanno metriche diverse e non si possono misurare uguali.
     std::function<float(std::wstring_view text, bool icon)> measureText;
 };
+
+// Se in modalita' compatta questo widget non si vede affatto.
+bool HiddenWhenCompact(const Widget& w);
 
 // Misura quanto il nodo vorrebbe essere, figli compresi.
 SizeF Measure(const Widget& w, const Metrics& m);

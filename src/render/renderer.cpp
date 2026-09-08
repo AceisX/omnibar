@@ -198,11 +198,14 @@ float Renderer::MeasureText(std::wstring_view text, bool icon) const {
 
 ui::Metrics Renderer::Metrics() const {
     ui::Metrics m = theme_.metrics();
+    m.compact     = compact_;
     m.measureText = [this](std::wstring_view text, bool icon) {
         return MeasureText(text, icon);
     };
     return m;
 }
+
+void Renderer::SetCompact(bool compact) { compact_ = compact; }
 
 // ── Disegno ──────────────────────────────────────────────────────────────────
 
@@ -229,16 +232,23 @@ void Renderer::DrawGlyphOrText(std::wstring_view text, bool icon, const ui::Rect
                    D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
 
-void Renderer::DrawBadge(const ui::Widget& w) {
+void Renderer::DrawBadge(const ui::Widget& w, const ui::RectF& anchor) {
     if (w.badge == 0) return;
 
-    // Il pallino sta appoggiato all'angolo dell'icona, non a quello del
-    // rettangolo cliccabile: un bottone di sola icona e' quadrato e piu' grande
-    // del glifo, e un badge nell'angolo del rettangolo sembra staccato.
+    // Il pallino si appoggia all'angolo in alto a destra di cio' che si vede —
+    // il glifo, non il rettangolo cliccabile. Un bottone di sola icona e'
+    // quadrato e piu' grande del suo glifo: ancorare all'angolo del rettangolo
+    // lo lascerebbe staccato, ancorarlo con un margine fisso lo farebbe finire
+    // sopra l'icona appena i bottoni rimpiccioliscono.
     const float radius = w.badge > 0 ? 7.f : 4.f;
-    const float inset  = w.badge > 0 ? 5.f : 8.f;
-    const float cx = w.rect.right() - radius - inset;
-    const float cy = w.rect.y + radius + inset;
+
+    float cx = anchor.right();
+    float cy = anchor.y;
+
+    // Il badge puo' sporgere un po' dal glifo, ma non uscire dal bottone: fuori
+    // di li' finirebbe sotto al widget accanto.
+    cx = std::min(cx, w.rect.right() - radius);
+    cy = std::max(cy, w.rect.y + radius);
 
     rt_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx, cy), radius, radius),
                      Brush(theme_.accent));
@@ -266,9 +276,12 @@ void Renderer::DrawButtonLike(const ui::Widget& w, const DrawState& state) {
     if (!w.enabled) fg = theme_.textDisabled;
     else if (isOn)  fg = theme_.accentText;
 
-    const ui::Metrics m = theme_.metrics();
+    const ui::Metrics m = Metrics();
     const bool hasIcon  = !w.icon.empty();
-    const bool hasLabel = !w.label.empty();
+    // La stessa regola della misura, e non e' una ripetizione da evitare: se le
+    // due divergessero, il rettangolo cliccabile e cio' che si vede finirebbero
+    // in posti diversi.
+    const bool hasLabel = !w.label.empty() && !(compact_ && hasIcon);
 
     // Un nome di icona sconosciuto non diventa un quadratino: si disegna la
     // prima lettera del nome nel font di testo, cosi' chi ha scritto il file
@@ -278,8 +291,15 @@ void Renderer::DrawButtonLike(const ui::Widget& w, const DrawState& state) {
                                         : (hasIcon ? w.icon.substr(0, 1) : std::wstring{});
     const bool iconIsGlyph = glyph != nullptr;
 
+    // Dove finisce davvero il glifo: serve al badge, che si ancora a cio' che
+    // si vede e non al rettangolo cliccabile.
+    ui::RectF glyphBox = w.rect;
+
     if (hasIcon && !hasLabel) {
         DrawGlyphOrText(iconText, iconIsGlyph, w.rect, fg, true);
+        glyphBox = ui::RectF{w.rect.x + (w.rect.w - m.iconSize) * 0.5f,
+                             w.rect.y + (w.rect.h - m.iconSize) * 0.5f,
+                             m.iconSize, m.iconSize};
     } else if (hasIcon && hasLabel) {
         const float iconW = m.iconSize;
         const ui::RectF iconBox{w.rect.x + m.buttonPadX, w.rect.y, iconW, w.rect.h};
@@ -287,14 +307,59 @@ void Renderer::DrawButtonLike(const ui::Widget& w, const DrawState& state) {
                                 w.rect.w - iconW - m.labelGap - m.buttonPadX * 2.f, w.rect.h};
         DrawGlyphOrText(iconText, iconIsGlyph, iconBox, fg, true);
         DrawGlyphOrText(w.label, false, textBox, fg, false);
+        glyphBox = w.rect;
     } else if (hasLabel) {
         DrawGlyphOrText(w.label, false, w.rect, fg, true);
     }
 
-    DrawBadge(w);
+    DrawBadge(w, glyphBox);
+}
+
+void Renderer::DrawHandle(const DrawState& state) {
+    const float w = static_cast<float>(widthPx_) * 96.f / static_cast<float>(dpi_);
+    const float h = static_cast<float>(heightPx_) * 96.f / static_cast<float>(dpi_);
+
+    const bool  vertical = (state.edge == Edge::Left || state.edge == Edge::Right);
+    const float peek     = std::max(2.f, state.peekDip);
+
+    // Lunga meta' della barra: abbastanza da leggersi come un appiglio, non
+    // tanto da sembrare un bordo dello schermo disegnato male.
+    const float along = std::max(40.f, (vertical ? h : w) * 0.5f);
+
+    // La linguetta e' il bordo della barra che sporge, non un tratto disegnato
+    // sopra lo schermo: percio' usa il fondo della barra, che e' quasi opaco, e
+    // non il colore del testo a bassa opacita'. Un tratto al 30 % di alpha si
+    // vede su meta' degli sfondi e sull'altra meta' no, e a riposo la barra sta
+    // sopra qualunque cosa l'utente abbia aperto.
+    //
+    // Come per il corpo della barra, il lato che va verso il bordo dello
+    // schermo si estende oltre la superficie: D2D lo ritaglia, e resta
+    // arrotondato solo il lato che si vede.
+    const float radius = peek * 0.5f;
+    const float over   = radius + 1.f;
+
+    ui::RectF r;
+    if (vertical) {
+        r.y = (h - along) * 0.5f;
+        r.h = along;
+        r.w = peek + over;
+        r.x = (state.edge == Edge::Right) ? -over : (w - peek);
+    } else {
+        r.x = (w - along) * 0.5f;
+        r.w = along;
+        r.h = peek + over;
+        r.y = (state.edge == Edge::Bottom) ? -over : (h - peek);
+    }
+
+    FillRounded(r, radius, theme_.background);
+
+    const D2D1_ROUNDED_RECT outline = D2D1::RoundedRect(Rect(r), radius, radius);
+    rt_->DrawRoundedRectangle(outline, Brush(theme_.border), theme_.borderWidth);
 }
 
 void Renderer::DrawWidget(const ui::Widget& w, const DrawState& state) {
+    if (compact_ && ui::HiddenWhenCompact(w)) return;
+
     switch (w.type) {
         case ui::WidgetType::Group:
             for (const auto& child : w.children) DrawWidget(child, state);
@@ -316,11 +381,23 @@ void Renderer::DrawWidget(const ui::Widget& w, const DrawState& state) {
         case ui::WidgetType::Separator: {
             const ui::Metrics m = theme_.metrics();
             const float thickness = m.separatorLen;
-            // La linea sta al centro del rettangolo che il layout gli ha dato,
-            // con l'aria ai lati gia' compresa nella misura.
-            const ui::RectF line{w.rect.x + (w.rect.w - thickness) * 0.5f,
-                                 w.rect.y + m.separatorPad, thickness,
-                                 std::max(0.f, w.rect.h - m.separatorPad * 2.f)};
+
+            // L'orientamento si deduce dal rettangolo che il layout ha dato al
+            // separatore: in un gruppo in riga e' alto e stretto, in colonna e'
+            // largo e basso. Cosi' il widget non deve sapere in che direzione
+            // e' il suo gruppo, e continua a funzionare se il gruppo cambia
+            // direzione — che e' esattamente cio' che succede quando la barra
+            // passa da un bordo orizzontale a uno laterale.
+            const bool vertical = w.rect.h >= w.rect.w;
+
+            const ui::RectF line =
+                vertical ? ui::RectF{w.rect.x + (w.rect.w - thickness) * 0.5f,
+                                     w.rect.y + m.separatorPad, thickness,
+                                     std::max(0.f, w.rect.h - m.separatorPad * 2.f)}
+                         : ui::RectF{w.rect.x + m.separatorPad,
+                                     w.rect.y + (w.rect.h - thickness) * 0.5f,
+                                     std::max(0.f, w.rect.w - m.separatorPad * 2.f), thickness};
+
             FillRounded(line, 0.f, theme_.separator);
             break;
         }
@@ -335,6 +412,18 @@ void Renderer::Draw(const ui::Widget& root, const DrawState& state) {
 
     rt_->BeginDraw();
     rt_->Clear(D2D1::ColorF(0, 0.f));
+
+    if (state.mode == DrawMode::Handle) {
+        DrawHandle(state);
+        const HRESULT hrHandle = rt_->EndDraw();
+        if (FAILED(hrHandle)) {
+            log::Hresult(L"EndDraw (linguetta)", hrHandle);
+            CreateSurface();
+            return;
+        }
+        Present(state.opacity);
+        return;
+    }
 
     // Gli angoli si arrotondano solo dal lato rivolto verso lo schermo: quelli
     // sul bordo si ottengono estendendo il rettangolo oltre la superficie, che
@@ -366,6 +455,11 @@ void Renderer::Draw(const ui::Widget& root, const DrawState& state) {
     }
 
     Present(state.opacity * theme_.opacity);
+}
+
+void Renderer::Repaint(float opacity) {
+    if (!rt_ || !surface_) return;
+    Present(opacity * theme_.opacity);
 }
 
 void Renderer::Present(float opacity) {

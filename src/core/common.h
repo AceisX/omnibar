@@ -67,7 +67,14 @@ enum class Edge { Bottom, Top, Left, Right };
 
 // Stato della barra (architecture.md §8). L'ordine non ha significato: le
 // transizioni valide le decide la macchina a stati, non un confronto.
-enum class BarState { Hidden, Peek, Revealed, Pinned, Attention, Expanded, Suppressed };
+//
+// `Peek` non e' fra questi. Era previsto come stato a se', ma a riposo con o
+// senza linguetta la barra fa esattamente la stessa cosa — aspetta il cursore
+// sul bordo — e cambia solo cio' che disegna. E' una variante di disegno di
+// Hidden e un'opzione di configurazione, non uno stato: aggiungerlo alla
+// macchina avrebbe raddoppiato le transizioni da verificare senza distinguere
+// nessun comportamento.
+enum class BarState { Hidden, Revealed, Pinned, Attention, Expanded, Suppressed };
 
 // Le zone della barra, in ordine di priorita' decrescente (architecture.md §7.3).
 enum class Zone { Alert, Pinned, Context, Overflow, Handle };

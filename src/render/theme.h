@@ -38,8 +38,11 @@ struct Theme {
     Color accentText;    // testo sopra l'accento
     Color separator;
 
-    float cornerRadius     = 12.f;
-    float widgetRadius     = 7.f;
+    // Quasi la meta' dello spessore: il lato rivolto verso lo schermo diventa
+    // una semicirconferenza e la barra si legge come una pastiglia appoggiata
+    // al bordo, non come un pannello incastrato.
+    float cornerRadius     = 20.f;
+    float widgetRadius     = 8.f;
     float borderWidth      = 1.f;
     float opacity          = 0.96f;
 

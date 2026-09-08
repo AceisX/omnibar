@@ -15,7 +15,13 @@ float Cross(const SizeF& s, bool row) { return row ? s.h : s.w; }
 
 }  // namespace
 
+bool HiddenWhenCompact(const Widget& w) {
+    return w.type == WidgetType::Label;
+}
+
 SizeF Measure(const Widget& w, const Metrics& m) {
+    if (m.compact && HiddenWhenCompact(w)) return {};
+
     switch (w.type) {
         case WidgetType::Separator:
             return {m.separatorLen + m.separatorPad * 2.f, m.separatorLen + m.separatorPad * 2.f};
@@ -31,7 +37,9 @@ SizeF Measure(const Widget& w, const Metrics& m) {
         case WidgetType::Button:
         case WidgetType::Toggle: {
             const bool hasIcon  = !w.icon.empty();
-            const bool hasLabel = !w.label.empty();
+            // In compatto l'etichetta se ne va, ma solo se c'e' un'icona a
+            // prenderne il posto.
+            const bool hasLabel = !w.label.empty() && !(m.compact && hasIcon);
 
             float content = 0.f;
             if (hasIcon)  content += m.iconSize;
@@ -52,6 +60,10 @@ SizeF Measure(const Widget& w, const Metrics& m) {
 
             for (const auto& child : w.children) {
                 const SizeF cs = Measure(child, m);
+                // Un figlio di dimensione nulla non porta con se' nemmeno il
+                // proprio spazio di separazione: altrimenti in compatto la
+                // barra resterebbe piena di buchi dove c'erano le etichette.
+                if (Main(cs, row) <= 0.f) continue;
                 main  += Main(cs, row);
                 cross  = std::max(cross, Cross(cs, row));
                 ++count;
@@ -76,17 +88,19 @@ void Layout(Widget& root, const RectF& bounds, const Metrics& m) {
     // Prima passata: quanto vuole ogni figlio, e quanti sono elastici.
     std::vector<SizeF> wanted;
     wanted.reserve(root.children.size());
-    float fixed  = 0.f;
+    float fixed   = 0.f;
     int   elastic = 0;
+    int   visible = 0;
 
     for (const auto& child : root.children) {
         const SizeF cs = Measure(child, m);
         wanted.push_back(cs);
-        if (Grows(child)) ++elastic;
-        else              fixed += Main(cs, row);
+        if (Grows(child)) { ++elastic; ++visible; continue; }
+        if (Main(cs, row) <= 0.f) continue;   // sparito in compatto
+        fixed += Main(cs, row);
+        ++visible;
     }
-    if (root.children.size() > 1)
-        fixed += root.gap * static_cast<float>(root.children.size() - 1);
+    if (visible > 1) fixed += root.gap * static_cast<float>(visible - 1);
 
     // Lo spazio che avanza va agli elastici. Se non ce ne sono e non ci sta
     // tutto, si sfora: il collasso nell'overflow e' della fase 2, e fingere che
@@ -102,6 +116,13 @@ void Layout(Widget& root, const RectF& bounds, const Metrics& m) {
 
         const float mainSize  = Grows(child) ? perGrow : Main(cs, row);
         const float crossWant = Cross(cs, row);
+
+        if (mainSize <= 0.f) {
+            // Sparito: rettangolo vuoto, cosi' l'hit-test non lo trova mai e
+            // il cursore non finisce a illuminare un widget invisibile.
+            child.rect = RectF{};
+            continue;
+        }
 
         float crossSize = crossWant;
         if (root.align == Align::Stretch || child.type == WidgetType::Separator)

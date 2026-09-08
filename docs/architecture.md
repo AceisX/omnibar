@@ -28,7 +28,8 @@ Windows, e aperta a chiunque voglia aggiungerci qualcosa.
 Il pubblico primario è chi lavora **su un monitor solo**, o su un laptop: le persone per cui
 ogni finestra aperta è spazio rubato, per cui il drag&drop fra due cartelle è un supplizio, e
 che passano la giornata a fare Alt-Tab per premere un bottone e tornare indietro. La barra dà
-loro quei bottoni senza rubare spazio: a riposo occupa 3 pixel.
+loro quei bottoni senza rubare spazio: a riposo occupa cinque pixel sul bordo, ed è lunga
+quanto il suo contenuto — non una percentuale dello schermo.
 
 Tre principi da cui discende tutto il resto:
 
@@ -118,7 +119,7 @@ estensioni installate, a riposo ne girano zero.
 | Decisione | Scelta | Motivo |
 |---|---|---|
 | Linguaggio / UI | C++20, Win32 + Direct2D | La barra è sempre residente: il costo a riposo è il vincolo dominante. WebView2 costa 60-100 MB e un processo figlio; .NET costa un runtime; Electron è fuori discussione. Il nativo sta in pochi MB e parla direttamente col sistema. |
-| Rendering | D2D software + `UpdateLayeredWindow`, con backend DirectComposition selezionabile | MiniBar ha misurato la composizione a 37,7 MB / 26 thread contro 8,7 MB / 11 thread — verdetto giusto per 266×45 px ridisegnati una volta al secondo. OmniBar è larga quanto lo schermo e si anima: uno slide fatto come trasformazione DComp non ci costa **niente**, con `UpdateLayeredWindow` costa un memcpy a tutta larghezza per frame. Quindi `renderer = auto/composition/layered`, deciso da una misura fatta su OmniBar. |
+| Rendering | D2D software + `UpdateLayeredWindow` | MiniBar ha misurato la composizione DComp a 37,7 MB / 26 thread contro 8,7 MB / 11 thread. Il dubbio era che su una barra animata il verdetto si ribaltasse, perché con `UpdateLayeredWindow` un'animazione costa un memcpy della superficie per frame. **Non si ribalta:** lo scorrimento di apertura è un `SetWindowPos` fra due rettangoli, e una finestra layered che si sposta non ridisegna nulla — zero memcpy, zero ridisegni. Il vantaggio che ci si aspettava da DComp si ottiene senza allocare un device D3D. Il backend di composizione resta previsto ma non ha più un motivo: lo avrà quando ci sarà da animare un *contenuto*, non una posizione. |
 | Modello UI | Layer retained-mode proprietario: albero widget, layout flex, animazioni, hit-test, UIA | È l'investimento fondante: ci sta sopra tutto il resto. Fatto bene, un modulo nuovo costa mezza giornata invece di una settimana. E senza provider UIAutomation l'app non è installabile "di default per tutti". |
 | Estensioni | Dichiarano un albero di widget, non disegnano | Coerenza visiva, isolamento dai crash, sicurezza (nessuna finta finestra di login sulla barra), qualsiasi linguaggio, un solo renderer da ottimizzare. |
 | Transport estensioni | JSON-RPC 2.0 su named pipe, un processo per estensione | Language-agnostic, crash-isolato, supervisionabile, con timeout. Se sa scrivere JSON su una pipe, è un plugin. |
@@ -329,8 +330,7 @@ piccolo) le zone a priorità bassa collassano nell'overflow.
 
 | Stato | Cosa si vede | Note |
 |---|---|---|
-| `Hidden` | una striscia trigger di 2-3 px sul bordo, o niente se si usa solo l'hotkey | default |
-| `Peek` | una maniglia discreta, opzionale | serve a farsi trovare dai nuovi utenti |
+| `Hidden` | una linguetta di pochi pixel sul bordo — il bordo della barra che sporge — o niente con `peek = false` | default |
 | `Revealed` | la barra aperta | si richiude da sola quando il cursore esce, con isteresi |
 | `Pinned` | aperta e fissata | opzionalmente registra l'AppBar e riserva spazio |
 | `Attention` | aperta, con un bordo che pulsa e il widget `prompt` in zona `alert` | **non si richiude da sola**; non ruba il focus |

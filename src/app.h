@@ -52,6 +52,12 @@ private:
     void BuildTree();
     void ApplyTheme();
 
+    // Il bordo detta due cose insieme: la direzione dell'albero e la modalita'
+    // compatta. Stanno in una funzione sola perche' devono cambiare insieme.
+    void  ApplyEdge();
+    bool  Vertical() const;
+    float ContentExtentDip() const;
+
     ui::RectF ToDip(POINT clientPx) const;
 
     HINSTANCE inst_ = nullptr;

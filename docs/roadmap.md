@@ -35,7 +35,8 @@ tutto il resto ci sta sopra.
 
 - [x] `shell`: finestra della barra, quattro bordi, DPI per-monitor, multi-monitor, tema chiaro/scuro
 - [x] Macchina a stati `Hidden → Revealed → Pinned` con scorrimento animato
-- [ ] Gli stati `Peek` e `Suppressed`
+- [x] Linguetta a riposo e apertura fluida (oltrepasso morbido + dissolvenza)
+- [ ] Lo stato `Suppressed`
 - [x] Zona trigger con soglia doppia tempo + distanza, isteresi in uscita
 - [ ] Esclusioni esplicite per hot corner e snap layout (oggi si usa solo l'area di lavoro)
 - [ ] Hotkey globale di apertura, navigazione completa da tastiera
@@ -49,9 +50,14 @@ tutto il resto ci sta sopra.
 - [ ] **Simulatore**: la barra in una finestra normale con contesti finti
 - [ ] Golden-image test dei widget
 
-Verificato finora: bordo in basso, in alto e a sinistra, tema chiaro e tema scuro, DPI 96.
-Le azioni `keystroke` e `shell` compilano ed esistono, ma non sono ancora state provate su
-un bersaglio reale: lo saranno con i primi profili dichiarativi.
+Verificato finora: tutti e quattro i bordi, tema chiaro e tema scuro, DPI 96, lunghezza
+adattata al contenuto, curva di apertura misurata (oltrepasso di 2 px a ~170 ms, rientro a
+~295 ms). A riposo: 4,2 MB e 0 ms di CPU su 15 secondi.
+
+Le azioni `keystroke` e `shell` compilano ed esistono, ma non sono ancora state provate su un
+bersaglio reale: lo saranno con i primi profili dichiarativi. Hover e pressione non sono
+ancora stati provati col mouse — l'ambiente di sviluppo non puo' muovere il cursore, ed e'
+anche il motivo per cui il simulatore in elenco non e' un lusso.
 
 **Fatto quando:** si può scrivere un TOML con dei bottoni, salvarlo, e avere una barra che si
 apre sul bordo e li esegue. **Questa fase è già un prodotto spedibile.**

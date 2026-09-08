@@ -11,11 +11,24 @@
 namespace omni::shell {
 
 struct PlacementConfig {
-    Edge  edge         = Edge::Bottom;
-    float extentPct    = 60.f;   // quanto occupa sul bordo lungo, in % dell'area di lavoro
-    float thicknessDip = 52.f;   // spessore, in DIP
-    int   triggerPx    = 3;      // quanti pixel restano visibili da nascosta
+    Edge  edge         = Edge::Right;
+
+    // Quanto occupa sul bordo lungo, in % dell'area di lavoro. **0 = auto**:
+    // la barra e' lunga quanto il suo contenuto e non un dito di piu'. E' il
+    // default perche' una barra che occupa il 60 % dello schermo per mostrare
+    // otto icone non e' minimal, e' solo grande.
+    float extentPct    = 0.f;
+    float maxExtentPct = 85.f;   // limite dell'auto: oltre, si va in overflow
+
+    float thicknessDip = 44.f;   // spessore, in DIP
+    int   triggerPx    = 4;      // spessore della zona sensibile sul bordo
     int   align        = 0;      // -1 inizio, 0 centro, +1 fine
+
+    // La linguetta: quanti pixel della barra restano visibili a riposo. Serve
+    // a farsi trovare da chi non sa che la barra c'e'. Con `peek = false` la
+    // finestra sparisce del tutto e resta solo la zona sensibile.
+    bool  peek         = true;
+    int   peekPx       = 5;
 };
 
 struct Placement {
@@ -25,8 +38,9 @@ struct Placement {
     SIZE     sizePx{};    // dimensione della finestra, in pixel
 
     RECT revealed{};      // posizione a barra aperta
-    RECT hidden{};        // posizione a barra chiusa: sporge di triggerPx
+    RECT hidden{};        // posizione a riposo: ne restano dentro `peekPx` pixel
     RECT trigger{};       // la zona sensibile sul bordo, in coordinate schermo
+    int  peekPx = 0;      // quanto sporge a riposo; 0 = fuori schermo del tutto
 
     bool valid() const { return monitor != nullptr && sizePx.cx > 0 && sizePx.cy > 0; }
 };
@@ -35,9 +49,11 @@ struct Placement {
 HMONITOR MonitorUnderCursor();
 HMONITOR PrimaryMonitor();
 
-// Calcola tutto per un monitor. Se il monitor non e' valido torna un Placement
-// non valido: il chiamante non deve indovinare.
-Placement Compute(const PlacementConfig& cfg, HMONITOR monitor);
+// Calcola tutto per un monitor. `contentExtentDip` e' quanto misura l'albero
+// dei widget sull'asse lungo, e serve solo quando `extentPct` e' 0 (auto). Se
+// il monitor non e' valido torna un Placement non valido: il chiamante non deve
+// indovinare.
+Placement Compute(const PlacementConfig& cfg, HMONITOR monitor, float contentExtentDip = 0.f);
 
 // La posizione della finestra a un dato avanzamento dello scorrimento:
 // 0 = chiusa, 1 = aperta. E' un'interpolazione fra hidden e revealed, quindi

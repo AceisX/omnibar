@@ -35,14 +35,18 @@ Theme Theme::Light() {
 }
 
 ui::Metrics Theme::metrics() const {
+    // Numeri piccoli, di proposito. La barra deve leggersi come un accessorio
+    // sul bordo, non come una seconda taskbar: con un bottone da 30 punti e
+    // sei di margine lo spessore totale sta in 42, meno di una riga di testo.
     ui::Metrics m;
-    m.padding      = 8.f;
-    m.buttonMin    = 34.f;
-    m.buttonPadX   = 10.f;
-    m.iconSize     = 16.f;
+    m.padAlong     = 12.f;
+    m.padCross     = 7.f;
+    m.buttonMin    = 30.f;
+    m.buttonPadX   = 9.f;
+    m.iconSize     = 15.f;
     m.labelGap     = 6.f;
     m.separatorLen = 1.f;
-    m.separatorPad = 5.f;
+    m.separatorPad = 4.f;
     return m;  // measureText la riempie il renderer, che sa misurare
 }
 

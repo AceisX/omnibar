@@ -16,20 +16,54 @@ namespace {
 
 constexpr UINT kCursorTickMs = 100;   // 10 Hz, come MiniBar: due syscall, invisibili
 constexpr UINT kAnimTickMs   = 8;
-constexpr UINT kSlideMs      = 190;
+constexpr UINT kOpenMs       = 300;   // aprire puo' prendersi tempo: si guarda
+constexpr UINT kCloseMs      = 190;   // chiudere no: e' un'uscita, non un ingresso
 constexpr UINT kUnhoverMs    = 400;
 constexpr float kOutsideMarginDip = 6.f;  // tolleranza attorno alla barra aperta
 
-// Ease-out cubico: parte veloce e si posa. Su un'animazione di apertura conta
-// piu' l'inizio della fine — l'utente giudica la reattivita' dai primi 50 ms.
-float EaseOut(float t) {
+// Apertura: parte decisa, supera di poco l'arrivo e rientra. E' quel rientro a
+// far sembrare il movimento fluido invece che meccanico — un ease-out puro si
+// posa in modo corretto ma inerte, come una cosa spenta che si ferma. Con
+// l'oltrepasso sembra che la barra abbia una massa.
+//
+// L'oltrepasso e' volutamente piccolo: su cinquanta punti di corsa vale due
+// pixel. Deve sentirsi, non vedersi.
+float EaseOutBack(float t) {
     t = std::clamp(t, 0.f, 1.f);
-    const float inv = 1.f - t;
-    return 1.f - inv * inv * inv;
+    constexpr float kOvershoot = 1.20f;
+    const float inv = t - 1.f;
+    return 1.f + inv * inv * ((kOvershoot + 1.f) * inv + kOvershoot);
+}
+
+// Chiusura: accelera e se ne va. Nessun oltrepasso — rientrando ci sarebbe da
+// vedere solo un rimbalzo verso lo schermo di una cosa che sta uscendo.
+float EaseInOut(float t) {
+    t = std::clamp(t, 0.f, 1.f);
+    return t < 0.5f ? 4.f * t * t * t
+                    : 1.f - std::pow(-2.f * t + 2.f, 3.f) / 2.f;
+}
+
+// La dissolvenza che accompagna lo scorrimento in apertura: la barra non arriva
+// solo da fuori, emerge. Legata alla posizione e non al tempo, cosi' resta in
+// fase con il movimento anche se la curva oltrepassa l'arrivo.
+float FadeForSlide(float slide) {
+    const float t = std::clamp(slide / 0.55f, 0.f, 1.f);
+    const float smooth = t * t * (3.f - 2.f * t);   // smoothstep
+    return 0.45f + 0.55f * smooth;
 }
 
 bool PointIn(const RECT& r, POINT p) {
     return p.x >= r.left && p.x < r.right && p.y >= r.top && p.y < r.bottom;
+}
+
+const wchar_t* EdgeName(Edge e) {
+    switch (e) {
+        case Edge::Bottom: return L"basso";
+        case Edge::Top:    return L"alto";
+        case Edge::Left:   return L"sinistra";
+        case Edge::Right:  return L"destra";
+    }
+    return L"?";
 }
 
 RECT Inflate(const RECT& r, int by) {
@@ -63,6 +97,7 @@ bool App::Init(HINSTANCE inst) {
     shell::AddTrayIcon(hwnd_, LoadIconW(nullptr, IDI_APPLICATION));
 
     BuildTree();
+    ApplyEdge();
     RefreshPlacement(true);
 
     // Si parte nascosti, gia' fuori schermo, e senza mai rubare il focus.
@@ -74,7 +109,9 @@ bool App::Init(HINSTANCE inst) {
 
     SetTimer(hwnd_, IDT_CURSOR, kCursorTickMs, nullptr);
 
-    log::Info(L"Barra pronta — bordo in basso, nascosta");
+    log::Info(std::wstring(L"Barra pronta — bordo a ") + EdgeName(placementCfg_.edge) +
+              L", " + std::to_wstring(placement_.sizePx.cx) + L"x" +
+              std::to_wstring(placement_.sizePx.cy) + L" px, a riposo");
     return true;
 }
 
@@ -172,7 +209,6 @@ LRESULT App::Handle(UINT msg, WPARAM wp, LPARAM lp) {
 const wchar_t* StateName(BarState s) {
     switch (s) {
         case BarState::Hidden:     return L"Hidden";
-        case BarState::Peek:       return L"Peek";
         case BarState::Revealed:   return L"Revealed";
         case BarState::Pinned:     return L"Pinned";
         case BarState::Attention:  return L"Attention";
@@ -215,6 +251,9 @@ void App::Reveal() {
     StartAnimation(1.f);
     Relayout();
     Redraw();
+    // Il primo fotogramma con gia' la dissolvenza giusta: altrimenti la barra
+    // lampeggia a piena opacita' per un tick prima di cominciare a emergere.
+    if (animating_) renderer_.Repaint(FadeForSlide(slide_));
 }
 
 void App::Hide() {
@@ -284,18 +323,28 @@ void App::OnCursorTick() {
 }
 
 void App::OnAnimTick() {
-    const ULONGLONG now = GetTickCount64();
-    const float elapsed = static_cast<float>(now - animStart_);
-    const float t       = std::clamp(elapsed / static_cast<float>(kSlideMs), 0.f, 1.f);
+    const ULONGLONG now      = GetTickCount64();
+    const bool      opening  = slideTarget_ > slideFrom_;
+    const float     duration = static_cast<float>(opening ? kOpenMs : kCloseMs);
+    const float     elapsed  = static_cast<float>(now - animStart_);
+    const float     t        = std::clamp(elapsed / duration, 0.f, 1.f);
 
-    slide_ = slideFrom_ + (slideTarget_ - slideFrom_) * EaseOut(t);
+    const float eased = opening ? EaseOutBack(t) : EaseInOut(t);
+    slide_ = slideFrom_ + (slideTarget_ - slideFrom_) * eased;
     ApplySlide();
+
+    // In apertura la barra emerge; in chiusura resta piena e scivola via, cosi'
+    // il passaggio finale alla linguetta non e' un lampo.
+    if (opening) renderer_.Repaint(FadeForSlide(slide_));
 
     if (t >= 1.f) {
         slide_     = slideTarget_;
         animating_ = false;
         KillTimer(hwnd_, IDT_ANIM);
         ApplySlide();
+        // Finito lo scorrimento all'indietro, la superficie passa dalla barra
+        // alla linguetta: un solo ridisegno, a movimento fermo.
+        if (state_ == BarState::Hidden) Redraw();
     }
 }
 
@@ -382,6 +431,7 @@ void App::OnTrayMenu(POINT screenPt) {
     pinned_ = false;
     SetState(BarState::Hidden);
     slide_ = slideTarget_ = 0.f;
+    ApplyEdge();
     RefreshPlacement(true);
     Relayout();
     ApplySlide();
@@ -415,6 +465,24 @@ bool App::OnInternalAction(std::wstring_view name) {
 
 // ── Geometria e disegno ──────────────────────────────────────────────────────
 
+bool App::Vertical() const {
+    return placementCfg_.edge == Edge::Left || placementCfg_.edge == Edge::Right;
+}
+
+void App::ApplyEdge() {
+    const bool vertical = Vertical();
+    root_.direction = vertical ? ui::Direction::Column : ui::Direction::Row;
+    // Sui bordi laterali la barra e' larga quaranta punti: le etichette non ci
+    // stanno, e troncarle si legge come un bug. Spariscono, restano le icone.
+    renderer_.SetCompact(vertical);
+}
+
+float App::ContentExtentDip() const {
+    const ui::Metrics m = renderer_.Metrics();
+    const ui::SizeF   s = ui::Measure(root_, m);
+    return (Vertical() ? s.h : s.w) + m.padAlong * 2.f;
+}
+
 void App::RefreshPlacement(bool force) {
     HMONITOR monitor = (state_ == BarState::Hidden || force)
                            ? shell::MonitorUnderCursor()
@@ -423,7 +491,9 @@ void App::RefreshPlacement(bool force) {
 
     if (!force && placement_.valid() && placement_.monitor == monitor) return;
 
-    const shell::Placement next = shell::Compute(placementCfg_, monitor);
+    // La barra e' lunga quanto il suo contenuto: si misura l'albero prima di
+    // sapere dove metterla, non dopo.
+    const shell::Placement next = shell::Compute(placementCfg_, monitor, ContentExtentDip());
     if (!next.valid()) {
         log::Warn(L"Placement non calcolabile: monitor non valido");
         return;
@@ -449,13 +519,14 @@ void App::Relayout() {
     const float h = static_cast<float>(placement_.sizePx.cy) * scale;
 
     const ui::Metrics m = renderer_.Metrics();
-    const ui::RectF bounds{m.padding, m.padding,
-                           std::max(0.f, w - m.padding * 2.f),
-                           std::max(0.f, h - m.padding * 2.f)};
+    // I due margini vanno sugli assi giusti: quello lungo alle estremita', dove
+    // ci sono gli angoli arrotondati, quello corto sui fianchi.
+    const float padX = Vertical() ? m.padCross : m.padAlong;
+    const float padY = Vertical() ? m.padAlong : m.padCross;
 
-    root_.direction = (placementCfg_.edge == Edge::Left || placementCfg_.edge == Edge::Right)
-                          ? ui::Direction::Column
-                          : ui::Direction::Row;
+    const ui::RectF bounds{padX, padY,
+                           std::max(0.f, w - padX * 2.f),
+                           std::max(0.f, h - padY * 2.f)};
 
     ui::Layout(root_, bounds, m);
 
@@ -471,6 +542,15 @@ void App::Redraw() {
     state.pressed = pressedId_;
     state.opacity = 1.f;
     state.edge    = placementCfg_.edge;
+
+    // A riposo si disegna solo la linguetta. Durante lo scorrimento no: li' la
+    // barra deve gia' esserci tutta, altrimenti non e' un'apertura, e' una
+    // comparsa.
+    const bool resting = (state_ == BarState::Hidden) && !animating_;
+    state.mode    = resting ? render::DrawMode::Handle : render::DrawMode::Bar;
+    state.peekDip = static_cast<float>(placement_.peekPx) * 96.f /
+                    static_cast<float>(placement_.dpi ? placement_.dpi : 96);
+
     renderer_.Draw(root_, state);
 }
 
@@ -520,28 +600,25 @@ void App::BuildTree() {
     // profili dichiarativi e i moduli.
     using namespace ui;
 
-    root_ = Group(Direction::Row, 6.f, {
-        Label(L"OmniBar", Emphasis::Dim),
+    root_ = Group(Direction::Row, 4.f, {
+        Label(L"OmniBar", Emphasis::Dim),      // sparisce in compatto
         Separator(),
-        Button("demo.folder",  L"folder",   L"Cartella",  Internal(L"demo.noop")),
-        Button("demo.camera",  L"camera",   L"Cattura",   Internal(L"demo.noop")),
-        Button("demo.copy",    L"copy",     L"Copia",     Internal(L"demo.noop")),
-        Toggle("demo.record",  L"record",   L"Registra",  false, Internal(L"demo.noop")),
+        Button("demo.folder", L"folder", L"Cartella",   Internal(L"demo.noop")),
+        Button("demo.camera", L"camera", L"Cattura",    Internal(L"demo.noop")),
+        Button("demo.copy",   L"copy",   L"Copia",      Internal(L"demo.noop")),
         Separator(),
-        Button("demo.prev",    L"prev",     L"Precedente", Internal(L"demo.noop")),
-        Button("demo.play",    L"play",     L"Riproduci",  Internal(L"demo.noop")),
-        Button("demo.next",    L"next",     L"Successivo", Internal(L"demo.noop")),
-        Spacer(),
-        TextButton("demo.site", L"github.com/AceisX/omnibar",
-                   Url(L"https://github.com/AceisX/omnibar")),
+        Button("demo.prev",   L"prev",   L"Precedente", Internal(L"demo.noop")),
+        Button("demo.play",   L"play",   L"Riproduci",  Internal(L"demo.noop")),
+        Button("demo.next",   L"next",   L"Successivo", Internal(L"demo.noop")),
         Separator(),
-        Toggle("bar.pin",      L"pin",      L"Tieni aperta", false, Internal(L"bar.pin")),
-        Button("bar.menu",     L"settings", L"Menu",         Internal(L"bar.menu")),
-        Button("bar.hide",     L"close",    L"Nascondi",     Internal(L"bar.hide")),
+        Toggle("demo.record", L"record", L"Registra", false, Internal(L"demo.noop")),
+        Separator(),
+        Toggle("bar.pin",     L"pin",      L"Tieni aperta", false, Internal(L"bar.pin")),
+        Button("bar.menu",    L"settings", L"Menu",         Internal(L"bar.menu")),
     });
     root_.align = ui::Align::Center;
 
-    // Un badge, per vedere che si disegna dove deve.
+    // Un pallino, per vedere che si disegna dove deve.
     if (ui::Widget* rec = ui::Find(root_, "demo.record")) rec->badge = -1;
 }
 

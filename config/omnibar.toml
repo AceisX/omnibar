@@ -9,25 +9,30 @@
 # compare con file, riga e cosa ci si aspettava.
 
 [bar]
-# Su quale bordo vive: bottom | top | left | right.
-# Sui bordi laterali lo spazio è poco: le zone a priorità bassa collassano
-# nell'overflow, e le etichette spariscono prima delle icone.
-edge = "bottom"
+# Su quale bordo vive: right | left | bottom | top.
+# Sui bordi laterali lo spazio è poco: le etichette spariscono e restano le
+# icone, che a quella dimensione dicono la stessa cosa.
+edge = "right"
 
-# Larghezza della barra sul bordo lungo, in percentuale dello schermo, e come
-# è allineata: center | start | end.
-extent = 60
-align  = "center"
+# Lunghezza sul bordo lungo. "auto" — il default — la fa lunga quanto il suo
+# contenuto e non un dito di più: una barra che occupa il 60 % dello schermo
+# per mostrare otto icone non è minimal, è solo grande.
+# In alternativa una percentuale dell'area di lavoro, es. extent = 60.
+extent     = "auto"
+max_extent = 85     # il tetto dell'auto: oltre, si va in overflow
+align      = "center"   # center | start | end
 
 # Su quale monitor. "cursor" la porta dove sta il mouse, "primary" la inchioda,
 # oppure l'indice del monitor.
 monitor = "cursor"
 
-# Altezza in DIP (larghezza, sui bordi laterali). Scala col DPI.
-thickness = 52
+# Spessore in DIP: larghezza sui bordi laterali, altezza su quelli
+# orizzontali. Scala col DPI. Con 44 un bottone da 30 sta dentro con sei punti
+# di margine — meno di una riga di testo, che è il punto.
+thickness = 44
 
 # Angoli e opacità.
-corner_radius = 12
+corner_radius = 11
 opacity       = 0.96
 
 # auto | dark | light. `auto` segue AppsUseLightTheme e cambia a caldo.
@@ -35,9 +40,15 @@ theme = "auto"
 
 
 [reveal]
+# La linguetta: quanti pixel della barra restano visibili a riposo. Serve a
+# farsi trovare da chi non sa che la barra c'è. Con peek = false la finestra
+# esce del tutto dallo schermo e resta solo la zona sensibile.
+peek    = true
+peek_px = 5
+
 # La zona sensibile sul bordo, in pixel fisici. Sotto i 2 px diventa difficile
 # da colpire su schermi ad alto DPI; sopra i 6 si attiva quando non vuoi.
-trigger_px = 3
+trigger_px = 4
 
 # Le due soglie che evitano i falsi positivi (architecture.md §8.1): il cursore
 # deve restare nella zona per `delay_ms` E aver percorso meno di `travel_px` in
@@ -52,9 +63,6 @@ unhover_ms = 400
 # false disattiva del tutto l'apertura al passaggio del mouse: resta solo
 # l'hotkey. Su un portatile col trackpad c'è chi la preferisce così.
 on_hover = true
-
-# Mostra una maniglia discreta quando la barra è nascosta, per farsi trovare.
-peek = false
 
 
 [hotkeys]
