@@ -37,6 +37,31 @@ enum : UINT {
     WM_APP_APPBAR     = WM_APP + 6,   // callback SHAppBarMessage
 };
 
+// Comandi del menu del tray. Restano pochi per scelta: le impostazioni vere
+// stanno nel TOML, e dalla fase 6 nell'editor. Un menu contestuale che cresce
+// senza limite e' il sintomo di un'app senza impostazioni.
+enum : UINT {
+    IDM_EDGE_BOTTOM = 1001,
+    IDM_EDGE_TOP    = 1002,
+    IDM_EDGE_LEFT   = 1003,
+    IDM_EDGE_RIGHT  = 1004,
+
+    IDM_PIN         = 1010,
+    IDM_REVEAL      = 1011,
+    IDM_AUTOSTART   = 1012,
+
+    IDM_OPEN_CONFIG = 1020,
+    IDM_OPEN_LOG    = 1021,
+    IDM_EXIT        = 1030,
+};
+
+// Timer del thread UI.
+enum : UINT_PTR {
+    IDT_CURSOR = 1,  // polling del cursore, 10 Hz — solo quando serve
+    IDT_ANIM   = 2,  // scorrimento e transizioni, ~120 Hz mentre qualcosa si muove
+    IDT_UNHOVER = 3, // isteresi di chiusura (one-shot)
+};
+
 // Il bordo su cui vive la barra.
 enum class Edge { Bottom, Top, Left, Right };
 

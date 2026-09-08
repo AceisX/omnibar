@@ -13,12 +13,15 @@ non sono qualcosa da "sistemare alla fine".
 
 **Collauda:** niente. Prepara il terreno.
 
-- [ ] Repo, licenza MIT, CI GitHub Actions, template di issue e PR
-- [ ] Toolchain portable in `tools\` (ereditata da MiniBar: MSVC, CMake, Ninja da pacchetti ufficiali)
-- [ ] CMake, preset locale (Ninja) e preset CI (Visual Studio), CRT statica
-- [ ] Scheletro `core`: entry point, single-instance, message loop, logging, crash handler
+- [x] Repo, licenza MIT, CI GitHub Actions
+- [x] Toolchain portable in `tools\` (ereditata da MiniBar: MSVC, CMake, Ninja da pacchetti ufficiali)
+- [x] CMake, preset locale (Ninja) e preset CI (Visual Studio), CRT statica
+- [x] Scheletro `core`: entry point, single-instance, message loop, logging
+- [ ] `core`: crash handler
 - [ ] `config`: parser TOML, schema, validazione con errori leggibili, hot-reload
-- [ ] Il gate della CI sui budget della §3 (dimensione eseguibile da subito, RAM dalla fase 1)
+- [x] Il gate della CI sulla dimensione dell'eseguibile
+- [ ] Il gate della CI su RAM e tempo di avvio
+- [ ] Template di issue e PR
 
 **Fatto quando:** `cmake --build` produce un `omnibar.exe` che parte, legge la configurazione,
 scrive un log e si chiude pulito.
@@ -30,18 +33,25 @@ scrive un log e si chiude pulito.
 **Collauda:** il layer UI e la macchina a stati del bordo. È la fase più importante di tutte:
 tutto il resto ci sta sopra.
 
-- [ ] `shell`: finestra della barra, quattro bordi, DPI per-monitor, multi-monitor, tema chiaro/scuro
-- [ ] Macchina a stati `Hidden → Peek → Revealed → Pinned → Suppressed` (§8)
-- [ ] Zona trigger con soglia doppia tempo + distanza, isteresi in uscita, esclusioni taskbar/hot corner
+- [x] `shell`: finestra della barra, quattro bordi, DPI per-monitor, multi-monitor, tema chiaro/scuro
+- [x] Macchina a stati `Hidden → Revealed → Pinned` con scorrimento animato
+- [ ] Gli stati `Peek` e `Suppressed`
+- [x] Zona trigger con soglia doppia tempo + distanza, isteresi in uscita
+- [ ] Esclusioni esplicite per hot corner e snap layout (oggi si usa solo l'area di lavoro)
 - [ ] Hotkey globale di apertura, navigazione completa da tastiera
-- [ ] `render`: backend layered software (D2D + `UpdateLayeredWindow`), atlas icone, temi
-- [ ] `ui`: albero widget, layout flex, hit-test, animazioni, provider UIAutomation
-- [ ] Vocabolario v1 minimo: `group`, `button`, `toggle`, `label`, `separator`, `spacer`, `badge`
-- [ ] `action`: `internal`, `keystroke`, `shell`, `url`, `macro` + controllo permessi
-- [ ] Estensioni **dichiarative** (TOML): il tier senza codice
-- [ ] Tray, menu contestuale, autostart
+- [x] `render`: backend layered software (D2D + `UpdateLayeredWindow`), icone di sistema, temi chiaro/scuro
+- [x] `ui`: albero widget, layout flex, hit-test, animazioni
+- [ ] `ui`: provider UIAutomation
+- [x] Vocabolario v1 minimo: `group`, `button`, `toggle`, `label`, `separator`, `spacer`, `badge`
+- [x] `action`: `internal`, `keystroke`, `shell`, `url`, `macro` + controllo permessi
+- [ ] Estensioni **dichiarative** (TOML): il tier senza codice — **il prossimo passo**
+- [x] Tray, menu contestuale, autostart
 - [ ] **Simulatore**: la barra in una finestra normale con contesti finti
 - [ ] Golden-image test dei widget
+
+Verificato finora: bordo in basso, in alto e a sinistra, tema chiaro e tema scuro, DPI 96.
+Le azioni `keystroke` e `shell` compilano ed esistono, ma non sono ancora state provate su
+un bersaglio reale: lo saranno con i primi profili dichiarativi.
 
 **Fatto quando:** si può scrivere un TOML con dei bottoni, salvarlo, e avere una barra che si
 apre sul bordo e li esegue. **Questa fase è già un prodotto spedibile.**

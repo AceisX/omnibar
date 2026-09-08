@@ -1,11 +1,9 @@
 // main.cpp — entry point dell'host.
 //
-// Fase 0 (docs/roadmap.md): single-instance, percorsi, log, message loop.
-// Non c'e' ancora nessuna finestra visibile: la barra arriva nella fase 1.
-//
-// Il message loop e' il thread UI, e resta l'unico posto dove vive lo stato
-// dell'interfaccia (architecture.md §15). Tutto cio' che arrivera' da fuori —
-// WinRT, named pipe, PDH, COM — passera' di qui via PostMessage.
+// Single-instance, percorsi, log, COM, poi App prende in mano tutto. Il message
+// loop di questo thread e' il thread UI: e' l'unico posto dove vive lo stato
+// dell'interfaccia (docs/architecture.md §15).
+#include "app.h"
 #include "core/common.h"
 #include "core/log.h"
 #include "core/paths.h"
@@ -15,45 +13,6 @@
 namespace omni {
 namespace {
 
-constexpr wchar_t kHostClass[] = L"OmniBarHost";
-
-// Finestra message-only: non si vede, non compare in Alt-Tab, esiste solo per
-// ricevere i WM_APP_* e i broadcast di sistema.
-LRESULT CALLBACK HostProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-    switch (msg) {
-        case WM_APP_QUIT:
-            PostQuitMessage(0);
-            return 0;
-
-        case WM_ENDSESSION:
-            // Windows sta chiudendo: qui andranno i ripristini garantiti
-            // (finestre nascoste, AppBar registrate, helper elevato).
-            log::Info(L"WM_ENDSESSION: chiusura richiesta dal sistema");
-            return 0;
-
-        case WM_DESTROY:
-            PostQuitMessage(0);
-            return 0;
-    }
-    return DefWindowProcW(hwnd, msg, wp, lp);
-}
-
-HWND CreateHostWindow(HINSTANCE inst) {
-    WNDCLASSEXW wc{sizeof(wc)};
-    wc.lpfnWndProc   = HostProc;
-    wc.hInstance     = inst;
-    wc.lpszClassName = kHostClass;
-    if (!RegisterClassExW(&wc)) {
-        log::LastError(L"RegisterClassExW(OmniBarHost)");
-        return nullptr;
-    }
-
-    HWND hwnd = CreateWindowExW(0, kHostClass, kAppName, 0, 0, 0, 0, 0,
-                                HWND_MESSAGE, nullptr, inst, nullptr);
-    if (!hwnd) log::LastError(L"CreateWindowExW(HWND_MESSAGE)");
-    return hwnd;
-}
-
 int Run(HINSTANCE inst) {
     const ULONGLONG startTick = GetTickCount64();
 
@@ -62,8 +21,8 @@ int Run(HINSTANCE inst) {
     HANDLE mutex = CreateMutexW(nullptr, TRUE, kMutexName);
     if (!mutex) return 1;
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
-        if (HWND existing = FindWindowExW(HWND_MESSAGE, nullptr, kHostClass, nullptr))
-            PostMessageW(existing, WM_APP_TRAY, 0, 0);   // "eccomi": la fase 1 la mostrera'
+        if (HWND existing = FindWindowW(L"OmniBarWindow", nullptr))
+            PostMessageW(existing, WM_APP_TRAY, 0, WM_LBUTTONUP);
         CloseHandle(mutex);
         return 0;
     }
@@ -81,35 +40,41 @@ int Run(HINSTANCE inst) {
     log::Info(std::wstring(L"Dati in: ") + paths::Root() +
               (paths::Portable() ? L"  (portable)" : L"  (%APPDATA%)"));
 
-    // COM in STA: e' quello che vogliono shell, WIC e il grosso delle API che
-    // useremo. Le estensioni girano fuori processo e non ci riguardano.
+    // COM in STA: e' quello che vogliono WIC, la shell e il grosso delle API
+    // che useremo. Le estensioni girano fuori processo e non ci riguardano.
     const HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     if (FAILED(hr)) log::Hresult(L"CoInitializeEx", hr);
 
-    HWND host = CreateHostWindow(inst);
-    if (!host) {
-        log::Error(L"Nessuna finestra host: si esce.");
-        CoUninitialize();
-        log::Close();
-        CloseHandle(mutex);
-        return 3;
-    }
+    int exitCode = 0;
+    {
+        App app;
+        if (!app.Init(inst)) {
+            log::Error(L"Inizializzazione fallita: si esce");
+            app.Shutdown();
+            CoUninitialize();
+            log::Close();
+            CloseHandle(mutex);
+            return 3;
+        }
 
-    log::Info(L"Pronto in " + std::to_wstring(GetTickCount64() - startTick) + L" ms");
+        log::Info(L"Pronto in " + std::to_wstring(GetTickCount64() - startTick) + L" ms");
 
-    MSG msg;
-    while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+        MSG msg;
+        while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+        exitCode = static_cast<int>(msg.wParam);
+
+        app.Shutdown();
     }
 
     log::Info(L"OmniBar — uscita");
-    DestroyWindow(host);
     CoUninitialize();
     log::Close();
     ReleaseMutex(mutex);
     CloseHandle(mutex);
-    return static_cast<int>(msg.wParam);
+    return exitCode;
 }
 
 }  // namespace

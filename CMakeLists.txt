@@ -15,9 +15,19 @@ string(REPLACE "/O2" "" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
 
 add_executable(omnibar WIN32
     src/main.cpp
+    src/app.cpp
     src/core/common.cpp
     src/core/log.cpp
     src/core/paths.cpp
+    src/ui/widget.cpp
+    src/ui/layout.cpp
+    src/render/theme.cpp
+    src/render/icons.cpp
+    src/render/renderer.cpp
+    src/shell/placement.cpp
+    src/shell/trigger.cpp
+    src/shell/window.cpp
+    src/action/bus.cpp
     src/omnibar.rc
 )
 
@@ -39,7 +49,8 @@ target_link_options(omnibar PRIVATE
 
 # Tutto dal Windows SDK: nessuna dipendenza esterna per l'host (§ tabella §4).
 target_link_libraries(omnibar PRIVATE
-    user32 shell32 shlwapi ole32 advapi32
+    d2d1 dwrite windowscodecs
+    user32 shell32 shlwapi ole32 advapi32 shcore
 )
 
 set_target_properties(omnibar PROPERTIES
