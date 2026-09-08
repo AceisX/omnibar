@@ -74,6 +74,12 @@ Placement Compute(const PlacementConfig& cfg, HMONITOR monitor, float contentExt
     if (cfg.align == 0)      along = origin + (span - extent) / 2;
     else if (cfg.align > 0)  along = origin + (span - extent);
 
+    p.horizontal   = horizontal;
+    p.alongDefault = along;
+    p.alongMin     = origin;
+    p.alongMax     = origin + span - extent;
+    if (p.alongMax < p.alongMin) p.alongMax = p.alongMin;
+
     const int trigger = std::max(1, cfg.triggerPx);
 
     // Quanto della finestra resta dentro l'area di lavoro a riposo. Con la
@@ -102,7 +108,7 @@ Placement Compute(const PlacementConfig& cfg, HMONITOR monitor, float contentExt
             const int top = peek ? p.work.bottom - peek : screen.bottom;
             p.revealed = {along, p.work.bottom - thickness, along + extent, p.work.bottom};
             p.hidden   = {along, top, along + extent, top + thickness};
-            p.trigger  = {along, p.work.bottom - trigger, along + extent, p.work.bottom};
+            p.trigger  = {p.work.left, p.work.bottom - trigger, p.work.right, p.work.bottom};
             break;
         }
 
@@ -110,7 +116,7 @@ Placement Compute(const PlacementConfig& cfg, HMONITOR monitor, float contentExt
             const int bottom = peek ? p.work.top + peek : screen.top;
             p.revealed = {along, p.work.top, along + extent, p.work.top + thickness};
             p.hidden   = {along, bottom - thickness, along + extent, bottom};
-            p.trigger  = {along, p.work.top, along + extent, p.work.top + trigger};
+            p.trigger  = {p.work.left, p.work.top, p.work.right, p.work.top + trigger};
             break;
         }
 
@@ -118,7 +124,7 @@ Placement Compute(const PlacementConfig& cfg, HMONITOR monitor, float contentExt
             const int right = peek ? p.work.left + peek : screen.left;
             p.revealed = {p.work.left, along, p.work.left + thickness, along + extent};
             p.hidden   = {right - thickness, along, right, along + extent};
-            p.trigger  = {p.work.left, along, p.work.left + trigger, along + extent};
+            p.trigger  = {p.work.left, p.work.top, p.work.left + trigger, p.work.bottom};
             break;
         }
 
@@ -126,7 +132,7 @@ Placement Compute(const PlacementConfig& cfg, HMONITOR monitor, float contentExt
             const int left = peek ? p.work.right - peek : screen.right;
             p.revealed = {p.work.right - thickness, along, p.work.right, along + extent};
             p.hidden   = {left, along, left + thickness, along + extent};
-            p.trigger  = {p.work.right - trigger, along, p.work.right, along + extent};
+            p.trigger  = {p.work.right - trigger, p.work.top, p.work.right, p.work.bottom};
             break;
         }
     }
@@ -134,7 +140,7 @@ Placement Compute(const PlacementConfig& cfg, HMONITOR monitor, float contentExt
     return p;
 }
 
-RECT Slide(const Placement& p, float t) {
+RECT Slide(const Placement& p, float t, int alongPx) {
     // Si accetta un po' oltre l'arrivo: la curva di apertura supera l'1 e
     // rientra, ed e' quel rientro a far sembrare il movimento fluido invece
     // che meccanico. Un limite c'e' comunque, perche' un errore di calcolo non
@@ -143,9 +149,13 @@ RECT Slide(const Placement& p, float t) {
     const float x = Lerp(static_cast<float>(p.hidden.left), static_cast<float>(p.revealed.left), t);
     const float y = Lerp(static_cast<float>(p.hidden.top),  static_cast<float>(p.revealed.top),  t);
 
+    // La coordinata perpendicolare la detta lo scorrimento; quella lungo il
+    // bordo la detta il chiamante, limitata ai valori ammessi.
+    const int along = std::clamp(alongPx, p.alongMin, p.alongMax);
+
     RECT r;
-    r.left   = static_cast<LONG>(x + 0.5f);
-    r.top    = static_cast<LONG>(y + 0.5f);
+    r.left   = p.horizontal ? along : static_cast<LONG>(x + 0.5f);
+    r.top    = p.horizontal ? static_cast<LONG>(y + 0.5f) : along;
     r.right  = r.left + p.sizePx.cx;
     r.bottom = r.top + p.sizePx.cy;
     return r;

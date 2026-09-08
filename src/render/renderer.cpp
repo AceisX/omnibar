@@ -211,7 +211,7 @@ void Renderer::SetCompact(bool compact) { compact_ = compact; }
 
 ID2D1SolidColorBrush* Renderer::Brush(const Color& c) {
     brush_->SetColor(D2D(c));
-    brush_->SetOpacity(1.f);
+    brush_->SetOpacity(contentAlpha_);
     return brush_.get();
 }
 
@@ -315,48 +315,6 @@ void Renderer::DrawButtonLike(const ui::Widget& w, const DrawState& state) {
     DrawBadge(w, glyphBox);
 }
 
-void Renderer::DrawHandle(const DrawState& state) {
-    const float w = static_cast<float>(widthPx_) * 96.f / static_cast<float>(dpi_);
-    const float h = static_cast<float>(heightPx_) * 96.f / static_cast<float>(dpi_);
-
-    const bool  vertical = (state.edge == Edge::Left || state.edge == Edge::Right);
-    const float peek     = std::max(2.f, state.peekDip);
-
-    // Lunga meta' della barra: abbastanza da leggersi come un appiglio, non
-    // tanto da sembrare un bordo dello schermo disegnato male.
-    const float along = std::max(40.f, (vertical ? h : w) * 0.5f);
-
-    // La linguetta e' il bordo della barra che sporge, non un tratto disegnato
-    // sopra lo schermo: percio' usa il fondo della barra, che e' quasi opaco, e
-    // non il colore del testo a bassa opacita'. Un tratto al 30 % di alpha si
-    // vede su meta' degli sfondi e sull'altra meta' no, e a riposo la barra sta
-    // sopra qualunque cosa l'utente abbia aperto.
-    //
-    // Come per il corpo della barra, il lato che va verso il bordo dello
-    // schermo si estende oltre la superficie: D2D lo ritaglia, e resta
-    // arrotondato solo il lato che si vede.
-    const float radius = peek * 0.5f;
-    const float over   = radius + 1.f;
-
-    ui::RectF r;
-    if (vertical) {
-        r.y = (h - along) * 0.5f;
-        r.h = along;
-        r.w = peek + over;
-        r.x = (state.edge == Edge::Right) ? -over : (w - peek);
-    } else {
-        r.x = (w - along) * 0.5f;
-        r.w = along;
-        r.h = peek + over;
-        r.y = (state.edge == Edge::Bottom) ? -over : (h - peek);
-    }
-
-    FillRounded(r, radius, theme_.background);
-
-    const D2D1_ROUNDED_RECT outline = D2D1::RoundedRect(Rect(r), radius, radius);
-    rt_->DrawRoundedRectangle(outline, Brush(theme_.border), theme_.borderWidth);
-}
-
 void Renderer::DrawWidget(const ui::Widget& w, const DrawState& state) {
     if (compact_ && ui::HiddenWhenCompact(w)) return;
 
@@ -413,39 +371,61 @@ void Renderer::Draw(const ui::Widget& root, const DrawState& state) {
     rt_->BeginDraw();
     rt_->Clear(D2D1::ColorF(0, 0.f));
 
-    if (state.mode == DrawMode::Handle) {
-        DrawHandle(state);
-        const HRESULT hrHandle = rt_->EndDraw();
-        if (FAILED(hrHandle)) {
-            log::Hresult(L"EndDraw (linguetta)", hrHandle);
-            CreateSurface();
-            return;
-        }
-        Present(state.opacity);
-        return;
+    // Il corpo si disegna sempre pieno; solo il contenuto sfuma.
+    contentAlpha_ = 1.f;
+
+    const float w = static_cast<float>(widthPx_) * 96.f / static_cast<float>(dpi_);
+    const float h = static_cast<float>(heightPx_) * 96.f / static_cast<float>(dpi_);
+
+    const bool vertical = (state.edge == Edge::Left || state.edge == Edge::Right);
+    const float full    = vertical ? h : w;
+
+    // La lunghezza attuale della forma. A riposo e' la pastiglia corta, aperta
+    // e' tutta la superficie, e in mezzo ci sono tutti i valori intermedi: e'
+    // quella continuita' a far sembrare che la barra si allunghi invece di
+    // essere sostituita.
+    const float along = (state.shapeAlong > 0.f) ? std::clamp(state.shapeAlong, 8.f, full) : full;
+
+    // Il raggio non e' fisso: sulla pastiglia corta vale la meta' del lato piu'
+    // corto, cosi' resta uno stadio perfetto e non un rettangolo smussato.
+    const float thickness = vertical ? w : h;
+    const float radius    = std::min(theme_.cornerRadius, std::min(along, thickness) * 0.5f);
+
+    // Il centro della forma sulla superficie, limitato perche' non sbordi. A
+    // lunghezza piena il limite lo riporta da solo a meta': non serve un caso
+    // speciale per la barra aperta.
+    const float halfFrac = (along * 0.5f) / full;
+    const float center   = std::clamp(state.shapeCenter, halfFrac, 1.f - halfFrac);
+    const float start    = center * full - along * 0.5f;
+
+    ui::RectF body;
+    if (vertical) {
+        body = ui::RectF{0.f, start, w, along};
+    } else {
+        body = ui::RectF{start, 0.f, along, h};
     }
 
     // Gli angoli si arrotondano solo dal lato rivolto verso lo schermo: quelli
     // sul bordo si ottengono estendendo il rettangolo oltre la superficie, che
     // D2D ritaglia. Costa tre righe invece di una path geometry.
-    const float w = static_cast<float>(widthPx_) * 96.f / static_cast<float>(dpi_);
-    const float h = static_cast<float>(heightPx_) * 96.f / static_cast<float>(dpi_);
-    const float r = theme_.cornerRadius;
-
-    ui::RectF body{0.f, 0.f, w, h};
+    const float over = radius + 1.f;
     switch (state.edge) {
-        case Edge::Bottom: body.h += r; break;
-        case Edge::Top:    body.y -= r; body.h += r; break;
-        case Edge::Left:   body.x -= r; body.w += r; break;
-        case Edge::Right:  body.w += r; break;
+        case Edge::Bottom: body.h += over; break;
+        case Edge::Top:    body.y -= over; body.h += over; break;
+        case Edge::Left:   body.x -= over; body.w += over; break;
+        case Edge::Right:  body.w += over; break;
     }
 
-    FillRounded(body, r, theme_.background);
+    FillRounded(body, radius, theme_.background);
 
-    const D2D1_ROUNDED_RECT border = D2D1::RoundedRect(Rect(body), r, r);
+    const D2D1_ROUNDED_RECT border = D2D1::RoundedRect(Rect(body), radius, radius);
     rt_->DrawRoundedRectangle(border, Brush(theme_.border), theme_.borderWidth);
 
-    DrawWidget(root, state);
+    if (state.contentAlpha > 0.01f) {
+        contentAlpha_ = std::clamp(state.contentAlpha, 0.f, 1.f);
+        DrawWidget(root, state);
+        contentAlpha_ = 1.f;
+    }
 
     const HRESULT hr = rt_->EndDraw();
     if (FAILED(hr)) {

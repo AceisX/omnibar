@@ -337,7 +337,33 @@ piccolo) le zone a priorità bassa collassano nell'overflow.
 | `Expanded` | un pannello più grande sopra la barra | grafici, shelf, liste |
 | `Suppressed` | niente, nemmeno la zona trigger | fullscreen esclusivo, presentazione, DND |
 
-### 8.1 · Perché il reveal è più difficile di quanto sembri
+### 8.1 · Il richiamo: la barra si muove prima di aprirsi
+
+A riposo la barra non sta ferma al centro del bordo. Entro ~190 punti dal bordo **insegue il
+cursore** scorrendo lungo di esso con uno smorzamento; entro ~80 punti **si allunga e sporge
+di un paio di pixel in più**. Poi, alla conferma, si apre.
+
+Non è decorazione, è latenza percepita. L'apertura vera costa comunque un'attesa di conferma
+(§8.2) più l'animazione: sommate, sono un paio di decimi in cui senza il richiamo non
+succederebbe niente e la barra sembrerebbe lenta. Con il richiamo il riscontro è immediato —
+il movimento comincia mentre ti stai ancora avvicinando — e l'apertura diventa **la fine di un
+gesto invece del suo inizio**.
+
+Due soglie e non una, per lo stesso motivo di §8.2: seguire da lontano è un accenno discreto,
+crescere da lontano sarebbe un'animazione che parte ogni volta che passi da quella parte dello
+schermo.
+
+**A riposo e da aperta la forma disegnata è la stessa**, con una lunghezza diversa: una
+pastiglia corta che si allunga fino a diventare la barra, e le icone che compaiono quando c'è
+spazio per contenerle. Erano due disegni distinti — una linguetta, e poi la barra — e si
+vedeva: sembrava che la striscia restasse sotto e che a uscire fosse un'altra cosa. Una forma
+sola che cresce non ha quel salto, perché non c'è niente da sostituire.
+
+Il polling del cursore è **adattivo**: 10 Hz lontano dal bordo, 125 Hz vicino, con isteresi
+sulla soglia. Con il solo passo lento, fra "il cursore arriva" e "la barra se ne accorge"
+potevano passare cento millisecondi, prima ancora che cominciasse l'attesa di conferma.
+
+### 8.2 · Perché il reveal è più difficile di quanto sembri
 
 Tre problemi che decidono se la barra è piacevole o insopportabile dopo due giorni:
 

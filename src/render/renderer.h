@@ -26,13 +26,6 @@
 
 namespace omni::render {
 
-// A riposo la barra non disegna se stessa: disegna solo una linguetta sul
-// bordo, e tutto il resto della superficie resta trasparente. Serve a due cose
-// insieme — farsi trovare da chi non sa che la barra c'e', e non coprire nulla:
-// i pixel a alpha zero non si vedono e non ricevono click, quindi la parte di
-// finestra che sborda oltre l'area di lavoro e' come se non ci fosse.
-enum class DrawMode { Bar, Handle };
-
 // Cosa cambia da un frame all'altro senza cambiare l'albero: e' separato dai
 // widget apposta, cosi' l'hover non obbliga a ricostruire l'albero.
 //
@@ -42,12 +35,29 @@ enum class DrawMode { Bar, Handle };
 // programma in primo piano, cioe' proprio mentre il mouse e' sulla barra. Un id
 // che non c'e' piu' semplicemente non corrisponde a niente.
 struct DrawState {
-    DrawMode         mode    = DrawMode::Bar;
     std::string_view hovered;
     std::string_view pressed;
     float            opacity = 1.f;
     Edge             edge    = Edge::Bottom;
-    float            peekDip = 5.f;   // quanto della finestra e' sullo schermo a riposo
+
+    // A riposo e a barra aperta si disegna LA STESSA FORMA, con una lunghezza
+    // diversa: una pastiglia corta che si allunga fino a diventare la barra.
+    // Erano due disegni distinti — una linguetta e poi la barra — e si vedeva:
+    // sembrava che la striscia restasse sotto e che a uscire fosse un'altra
+    // cosa. Una forma sola che cresce non ha quel salto, perche' non c'e'
+    // niente da sostituire.
+    //
+    // `shapeAlong` e' la lunghezza attuale in DIP; `contentAlpha` fa comparire
+    // le icone mentre la forma si allunga, perche' schiacciate dentro la
+    // pastiglia corta non avrebbero senso.
+    // `shapeCenter` e' dove sta il centro della forma sulla superficie, 0-1.
+    // Serve vicino alle estremita' dello schermo: li' la finestra non puo'
+    // scorrere oltre, e senza questo la pastiglia resterebbe indietro invece di
+    // stare sotto il cursore. Viene comunque limitato perche' la forma non esca
+    // dalla superficie, e a lunghezza piena si riduce da solo a 0,5.
+    float shapeAlong   = 0.f;   // 0 = usa tutta la lunghezza della superficie
+    float shapeCenter  = 0.5f;
+    float contentAlpha = 1.f;
 };
 
 class Renderer {
@@ -91,7 +101,6 @@ private:
     void DrawWidget(const ui::Widget& w, const DrawState& state);
     void DrawButtonLike(const ui::Widget& w, const DrawState& state);
     void DrawBadge(const ui::Widget& w, const ui::RectF& anchor);
-    void DrawHandle(const DrawState& state);
     void FillRounded(const ui::RectF& r, float radius, const Color& c);
     void DrawGlyphOrText(std::wstring_view text, bool icon, const ui::RectF& box,
                          const Color& color, bool centered);
@@ -103,6 +112,12 @@ private:
     UINT  widthPx_ = 0, heightPx_ = 0;
     Theme theme_   = Theme::Dark();
     bool  compact_ = false;
+
+    // Opacita' applicata a ogni pennellata del contenuto mentre la barra si
+    // apre. Sta qui e non nei parametri perche' attraversa tutto il disegno:
+    // passarla a mano a ogni funzione sarebbe stato un invito a dimenticarla in
+    // una di quelle.
+    float contentAlpha_ = 1.f;
 
     winrt::com_ptr<ID2D1Factory1>      d2dFactory_;
     winrt::com_ptr<IDWriteFactory>     dwrite_;

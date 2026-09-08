@@ -38,9 +38,17 @@ struct Placement {
     SIZE     sizePx{};    // dimensione della finestra, in pixel
 
     RECT revealed{};      // posizione a barra aperta
-    RECT hidden{};        // posizione a riposo: ne restano dentro `peekPx` pixel
-    RECT trigger{};       // la zona sensibile sul bordo, in coordinate schermo
-    int  peekPx = 0;      // quanto sporge a riposo; 0 = fuori schermo del tutto
+    RECT hidden{};         // posizione a riposo: ne restano dentro `peekPx` pixel
+    RECT trigger{};        // la zona sensibile: tutto il bordo, in coordinate schermo
+    int  peekPx = 0;       // quanto sporge a riposo; 0 = fuori schermo del tutto
+
+    // La barra non e' inchiodata al centro del bordo: scorre lungo di esso per
+    // andare incontro al cursore. `revealed` e `hidden` sono calcolati con la
+    // barra centrata, e chi disegna passa la posizione vera a Slide().
+    bool horizontal   = true;   // il bordo lungo e' orizzontale
+    int  alongDefault = 0;      // coordinata lungo il bordo, a barra centrata
+    int  alongMin     = 0;      // limiti entro cui puo' scorrere senza uscire
+    int  alongMax     = 0;
 
     bool valid() const { return monitor != nullptr && sizePx.cx > 0 && sizePx.cy > 0; }
 };
@@ -59,6 +67,9 @@ Placement Compute(const PlacementConfig& cfg, HMONITOR monitor, float contentExt
 // 0 = chiusa, 1 = aperta. E' un'interpolazione fra hidden e revealed, quindi
 // lo scorrimento e' un SetWindowPos e non richiede di ridisegnare la
 // superficie: e' li' che si guadagna lo "zero ridisegni durante l'animazione".
-RECT Slide(const Placement& p, float t);
+// `alongPx` e' la coordinata lungo il bordo: la x su un bordo orizzontale, la y
+// su uno laterale. Viene limitata ai valori ammessi, cosi' chi chiama puo'
+// passare la posizione del cursore senza doverla ritagliare a mano.
+RECT Slide(const Placement& p, float t, int alongPx);
 
 }  // namespace omni::shell

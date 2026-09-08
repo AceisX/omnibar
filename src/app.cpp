@@ -14,23 +14,43 @@
 namespace omni {
 namespace {
 
-constexpr UINT kCursorTickMs = 100;   // 10 Hz, come MiniBar: due syscall, invisibili
-constexpr UINT kAnimTickMs   = 8;
-constexpr UINT kOpenMs       = 300;   // aprire puo' prendersi tempo: si guarda
-constexpr UINT kCloseMs      = 190;   // chiudere no: e' un'uscita, non un ingresso
-constexpr UINT kUnhoverMs    = 400;
-constexpr float kOutsideMarginDip = 6.f;  // tolleranza attorno alla barra aperta
+// Il polling del cursore e' adattivo. Lontano dal bordo bastano 10 Hz — due
+// syscall, invisibili. Vicino al bordo si sale a 125 Hz, perche' li' ogni tick
+// perso e' latenza percepita: con il solo passo lento, fra "il cursore arriva"
+// e "la barra se ne accorge" potevano passare cento millisecondi, prima ancora
+// che cominciasse l'attesa di conferma.
+constexpr UINT kSlowTickMs = 100;
+constexpr UINT kFastTickMs = 8;
+
+constexpr UINT kOpenMs    = 200;   // era 300: si vedeva, e vedere un'apertura vuol dire che e' lenta
+constexpr UINT kCloseMs   = 160;
+constexpr UINT kAnimTickMs = 8;
+constexpr UINT kUnhoverMs  = 400;
+
+constexpr float kOutsideMarginDip = 6.f;
+
+// Entro questa distanza dal bordo la pastiglia insegue il cursore; entro la
+// seconda, piu' stretta, si allunga e sporge di piu'. Due soglie e non una:
+// seguire da lontano e' un accenno discreto, crescere da lontano sarebbe
+// un'animazione che parte ogni volta che passi da quella parte dello schermo.
+constexpr float kFollowDip = 190.f;
+constexpr float kGrowDip   = 80.f;
+
+// La pastiglia a riposo, e quanto si allunga quando il cursore si avvicina.
+constexpr float kHandleDip     = 46.f;
+constexpr float kHandleGrowDip = 30.f;
+
+// Costante di tempo dell'inseguimento. Piu' e' bassa piu' e' reattivo; sotto i
+// 40 ms smette di sembrare un liquido e comincia a sembrare un incollaggio.
+constexpr float kFollowTauMs = 65.f;
 
 // Apertura: parte decisa, supera di poco l'arrivo e rientra. E' quel rientro a
 // far sembrare il movimento fluido invece che meccanico — un ease-out puro si
 // posa in modo corretto ma inerte, come una cosa spenta che si ferma. Con
 // l'oltrepasso sembra che la barra abbia una massa.
-//
-// L'oltrepasso e' volutamente piccolo: su cinquanta punti di corsa vale due
-// pixel. Deve sentirsi, non vedersi.
 float EaseOutBack(float t) {
     t = std::clamp(t, 0.f, 1.f);
-    constexpr float kOvershoot = 1.20f;
+    constexpr float kOvershoot = 1.15f;
     const float inv = t - 1.f;
     return 1.f + inv * inv * ((kOvershoot + 1.f) * inv + kOvershoot);
 }
@@ -43,13 +63,18 @@ float EaseInOut(float t) {
                     : 1.f - std::pow(-2.f * t + 2.f, 3.f) / 2.f;
 }
 
-// La dissolvenza che accompagna lo scorrimento in apertura: la barra non arriva
-// solo da fuori, emerge. Legata alla posizione e non al tempo, cosi' resta in
-// fase con il movimento anche se la curva oltrepassa l'arrivo.
-float FadeForSlide(float slide) {
-    const float t = std::clamp(slide / 0.55f, 0.f, 1.f);
-    const float smooth = t * t * (3.f - 2.f * t);   // smoothstep
-    return 0.45f + 0.55f * smooth;
+float SmoothStep(float edge0, float edge1, float x) {
+    const float t = std::clamp((x - edge0) / (edge1 - edge0), 0.f, 1.f);
+    return t * t * (3.f - 2.f * t);
+}
+
+// Inseguimento indipendente dalla frequenza dei tick: con un fattore fisso per
+// tick, la barra inseguirebbe piu' in fretta quando il polling e' veloce, cioe'
+// proprio quando cambia passo. Cosi' invece la sensazione resta la stessa.
+float Approach(float current, float target, float dtMs, float tauMs) {
+    if (tauMs <= 0.f) return target;
+    const float k = 1.f - std::exp(-dtMs / tauMs);
+    return current + (target - current) * k;
 }
 
 bool PointIn(const RECT& r, POINT p) {
@@ -100,14 +125,21 @@ bool App::Init(HINSTANCE inst) {
     ApplyEdge();
     RefreshPlacement(true);
 
+    // Soglie di apertura. Erano 180 ms di attesa piu' fino a 100 di polling:
+    // mezzo secondo prima che succedesse qualcosa. Adesso il richiamo della
+    // pastiglia da' un riscontro immediato, quindi la conferma puo' essere
+    // molto piu' breve senza diventare nervosa.
+    trigger_.SetConfig({70, 40});
+
     // Si parte nascosti, gia' fuori schermo, e senza mai rubare il focus.
     slide_ = slideTarget_ = 0.f;
+    along_ = alongTarget_ = static_cast<float>(placement_.alongDefault);
     ApplySlide();
     shell::SetClickThrough(hwnd_, true);
     shell::ShowNoActivate(hwnd_);
     Redraw();
 
-    SetTimer(hwnd_, IDT_CURSOR, kCursorTickMs, nullptr);
+    SetCursorTick(kSlowTickMs);
 
     log::Info(std::wstring(L"Barra pronta — bordo a ") + EdgeName(placementCfg_.edge) +
               L", " + std::to_wstring(placement_.sizePx.cx) + L"x" +
@@ -251,9 +283,6 @@ void App::Reveal() {
     StartAnimation(1.f);
     Relayout();
     Redraw();
-    // Il primo fotogramma con gia' la dissolvenza giusta: altrimenti la barra
-    // lampeggia a piena opacita' per un tick prima di cominciare a emergere.
-    if (animating_) renderer_.Repaint(FadeForSlide(slide_));
 }
 
 void App::Hide() {
@@ -279,30 +308,113 @@ void App::TogglePin() {
 
 // ── Eventi ───────────────────────────────────────────────────────────────────
 
+void App::SetCursorTick(UINT intervalMs) {
+    if (cursorTickMs_ == intervalMs) return;
+    cursorTickMs_ = intervalMs;
+    SetTimer(hwnd_, IDT_CURSOR, intervalMs, nullptr);
+}
+
+float App::EdgeDistanceDip(POINT cursor) const {
+    if (!placement_.valid()) return 1e9f;
+    const RECT& w = placement_.work;
+    int px = 0;
+    switch (placementCfg_.edge) {
+        case Edge::Bottom: px = w.bottom - cursor.y; break;
+        case Edge::Top:    px = cursor.y - w.top;    break;
+        case Edge::Left:   px = cursor.x - w.left;   break;
+        case Edge::Right:  px = w.right - cursor.x;  break;
+    }
+    // Fuori dall'area di lavoro sull'altro asse la barra non deve reagire: il
+    // cursore e' sul bordo destro ma a meta' di un altro monitor.
+    const bool alongOk = placement_.horizontal ? (cursor.x >= w.left && cursor.x < w.right)
+                                               : (cursor.y >= w.top && cursor.y < w.bottom);
+    if (!alongOk) return 1e9f;
+
+    return static_cast<float>(std::max(0, px)) * 96.f /
+           static_cast<float>(placement_.dpi ? placement_.dpi : 96);
+}
+
+int App::CursorAlong(POINT cursor) const {
+    return placement_.horizontal ? cursor.x : cursor.y;
+}
+
+void App::UpdateAttraction(POINT cursor, float dtMs) {
+    const float dist = EdgeDistanceDip(cursor);
+
+    // Due soglie: `follow` fa inseguire, `grow` fa allungare e sporgere. La
+    // seconda e' molto piu' stretta, altrimenti la barra si metterebbe a
+    // gonfiarsi ogni volta che si passa da quella parte dello schermo.
+    const float follow = 1.f - SmoothStep(0.f, kFollowDip, dist);
+    grow_ = 1.f - SmoothStep(0.f, kGrowDip, dist);
+
+    const int winLen = placement_.horizontal ? placement_.sizePx.cx : placement_.sizePx.cy;
+    const int along  = CursorAlong(cursor);
+
+    if (follow > 0.01f) {
+        alongTarget_ = static_cast<float>(
+            std::clamp(along - winLen / 2, placement_.alongMin, placement_.alongMax));
+    }
+
+    along_ = Approach(along_, alongTarget_, dtMs, kFollowTauMs);
+
+    // Dove sta la pastiglia dentro la finestra. Vicino alle estremita' dello
+    // schermo la finestra non puo' scorrere oltre: senza questo la pastiglia
+    // resterebbe indietro proprio dove il cursore e' piu' facile da portare.
+    const float winStart = along_;
+    const float target   = winLen > 0
+        ? std::clamp((static_cast<float>(along) - winStart) / static_cast<float>(winLen), 0.f, 1.f)
+        : 0.5f;
+    shapeCenter_ = follow > 0.01f ? Approach(shapeCenter_, target, dtMs, kFollowTauMs)
+                                  : Approach(shapeCenter_, 0.5f, dtMs, kFollowTauMs * 3.f);
+
+    // Avvicinandosi, la barra sporge un paio di pixel in piu': e' il richiamo,
+    // e vale piu' di qualunque animazione dopo, perche' arriva prima.
+    if (!animating_) slide_ = 0.12f * grow_;
+}
+
 void App::OnCursorTick() {
     POINT cursor{};
     if (!GetCursorPos(&cursor)) return;
+
     const ULONGLONG now = GetTickCount64();
+    const float dtMs = lastTick_ ? static_cast<float>(now - lastTick_) : static_cast<float>(kSlowTickMs);
+    lastTick_ = now;
 
     if (state_ == BarState::Hidden) {
         // Da chiusa la barra segue il monitor sotto il cursore: su un portatile
         // con un monitor esterno, apparire sull'altro schermo e' inutile.
         RefreshPlacement(false);
+        if (!placement_.valid()) return;
 
-        const bool inZone = placement_.valid() && PointIn(placement_.trigger, cursor);
+        // `near` non si puo' usare come nome: windows.h la definisce ancora
+        // come macro vuota, retaggio dei puntatori a 16 bit, e la
+        // dichiarazione sparirebbe lasciando un errore incomprensibile.
+        const float dist = EdgeDistanceDip(cursor);
 
-        if (log::Enabled(log::Level::Trace)) {
-            log::Trace(L"cursore " + std::to_wstring(cursor.x) + L"," + std::to_wstring(cursor.y) +
-                       L"  zona " + std::to_wstring(placement_.trigger.left) + L"," +
-                       std::to_wstring(placement_.trigger.top) + L".." +
-                       std::to_wstring(placement_.trigger.right) + L"," +
-                       std::to_wstring(placement_.trigger.bottom) +
-                       (inZone ? L"  DENTRO" : L""));
+        // Passo veloce solo dove serve, con isteresi sulla soglia: un cursore
+        // fermo proprio sul confine riarmerebbe il timer di sistema molte volte
+        // al secondo per niente.
+        const bool wasFast = (cursorTickMs_ == kFastTickMs);
+        const bool atEdge  = wasFast ? (dist < kFollowDip * 1.25f) : (dist < kFollowDip);
+        SetCursorTick(atEdge ? kFastTickMs : kSlowTickMs);
+
+        UpdateAttraction(cursor, dtMs);
+        ApplySlide();
+
+        // Si ridisegna solo se la forma e' cambiata davvero. Inseguire il
+        // cursore a 125 Hz ridisegnando ogni volta sarebbe lavoro sprecato per
+        // frazioni di pixel.
+        const float alongDip = kHandleDip + kHandleGrowDip * grow_;
+        if (std::fabs(alongDip - drawnAlong_) > 0.3f ||
+            std::fabs(shapeCenter_ - drawnCenter_) > 0.002f) {
+            Redraw();
         }
 
-        if (trigger_.Update(inZone, cursor, now)) Reveal();
+        if (trigger_.Update(PointIn(placement_.trigger, cursor), cursor, now)) Reveal();
         return;
     }
+
+    SetCursorTick(kSlowTickMs);
 
     if (state_ == BarState::Revealed) {
         RECT bar{};
@@ -332,10 +444,7 @@ void App::OnAnimTick() {
     const float eased = opening ? EaseOutBack(t) : EaseInOut(t);
     slide_ = slideFrom_ + (slideTarget_ - slideFrom_) * eased;
     ApplySlide();
-
-    // In apertura la barra emerge; in chiusura resta piena e scivola via, cosi'
-    // il passaggio finale alla linguetta non e' un lampo.
-    if (opening) renderer_.Repaint(FadeForSlide(slide_));
+    Redraw();   // la forma cambia a ogni fotogramma: e' lei l'animazione
 
     if (t >= 1.f) {
         slide_     = slideTarget_;
@@ -502,12 +611,21 @@ void App::RefreshPlacement(bool force) {
     const bool sizeChanged = (next.sizePx.cx != placement_.sizePx.cx ||
                               next.sizePx.cy != placement_.sizePx.cy ||
                               next.dpi != placement_.dpi);
+    const bool moved = (next.monitor != placement_.monitor) || sizeChanged;
     placement_ = next;
 
     if (sizeChanged) {
         renderer_.Resize(static_cast<UINT>(placement_.sizePx.cx),
                          static_cast<UINT>(placement_.sizePx.cy), placement_.dpi);
         Relayout();
+        drawnAlong_ = drawnCenter_ = -1.f;   // la forma va comunque ridisegnata
+    }
+
+    // Cambiato monitor o geometria, l'inseguimento non puo' continuare da dove
+    // era: quelle coordinate appartenevano a un altro schermo.
+    if (moved) {
+        along_ = alongTarget_ = static_cast<float>(placement_.alongDefault);
+        shapeCenter_ = 0.5f;
     }
 }
 
@@ -536,32 +654,51 @@ void App::Relayout() {
 }
 
 void App::Redraw() {
-    if (!renderer_.Valid()) return;
-    render::DrawState state;
-    state.hovered = hoveredId_;
-    state.pressed = pressedId_;
-    state.opacity = 1.f;
-    state.edge    = placementCfg_.edge;
+    if (!renderer_.Valid() || !placement_.valid()) return;
 
-    // A riposo si disegna solo la linguetta. Durante lo scorrimento no: li' la
-    // barra deve gia' esserci tutta, altrimenti non e' un'apertura, e' una
-    // comparsa.
-    const bool resting = (state_ == BarState::Hidden) && !animating_;
-    state.mode    = resting ? render::DrawMode::Handle : render::DrawMode::Bar;
-    state.peekDip = static_cast<float>(placement_.peekPx) * 96.f /
-                    static_cast<float>(placement_.dpi ? placement_.dpi : 96);
+    const float scale   = 96.f / static_cast<float>(placement_.dpi ? placement_.dpi : 96);
+    const float fullDip = static_cast<float>(placement_.horizontal ? placement_.sizePx.cx
+                                                                  : placement_.sizePx.cy) * scale;
+
+    // La pastiglia a riposo, gia' cresciuta di quanto il cursore e' vicino.
+    const float handleDip = kHandleDip + kHandleGrowDip * grow_;
+
+    // L'allungamento parte solo dopo lo sporgere: sotto quella soglia lo
+    // scorrimento e' il richiamo, non l'apertura, e la forma non deve muoversi.
+    const float expand  = SmoothStep(0.15f, 1.f, slide_);
+    const float along   = handleDip + (fullDip - handleDip) * expand;
+
+    render::DrawState state;
+    state.hovered      = hoveredId_;
+    state.pressed      = pressedId_;
+    state.opacity      = 1.f;
+    state.edge         = placementCfg_.edge;
+    state.shapeAlong   = along;
+    state.shapeCenter  = shapeCenter_;
+    // Le icone compaiono quando c'e' spazio per contenerle, non prima: dentro
+    // la pastiglia corta sarebbero un ammasso.
+    state.contentAlpha = SmoothStep(0.45f, 0.95f, slide_);
+
+    drawnAlong_  = handleDip;
+    drawnCenter_ = shapeCenter_;
 
     renderer_.Draw(root_, state);
 }
 
 void App::ApplySlide() {
     if (!placement_.valid()) return;
-    const RECT r = shell::Slide(placement_, slide_);
-    if (log::Enabled(log::Level::Debug)) {
-        log::Debug(L"slide " + std::to_wstring(slide_) + L" -> " +
-                   std::to_wstring(r.left) + L"," + std::to_wstring(r.top) + L" " +
-                   std::to_wstring(r.right - r.left) + L"x" + std::to_wstring(r.bottom - r.top));
-    }
+
+    const RECT r = shell::Slide(placement_, slide_, static_cast<int>(along_ + 0.5f));
+
+    // Solo se si e' mossa davvero. A riposo il tick del cursore passa di qui
+    // dieci volte al secondo con lo stesso rettangolo, e una SetWindowPos su
+    // una finestra topmost non e' gratis nemmeno quando non sposta niente: era
+    // lo 0,2 % di un core speso per riscrivere la stessa posizione.
+    if (r.left == lastRect_.left && r.top == lastRect_.top &&
+        r.right == lastRect_.right && r.bottom == lastRect_.bottom)
+        return;
+
+    lastRect_ = r;
     shell::MoveNoActivate(hwnd_, r);
 }
 
