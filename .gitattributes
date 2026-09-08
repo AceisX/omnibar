@@ -1,0 +1,8 @@
+# Fine riga LF ovunque, anche in checkout: i sorgenti sono già LF e la
+# toolchain (MSVC, CMake, PowerShell) li accetta senza problemi.
+* text=auto eol=lf
+
+# Binari
+*.ico binary
+*.png binary
+*.gif binary

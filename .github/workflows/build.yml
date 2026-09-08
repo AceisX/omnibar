@@ -1,0 +1,38 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configura
+        run: cmake --preset ci
+
+      - name: Compila
+        run: cmake --build --preset ci
+
+      # Il budget della §3 dell'architettura e' un requisito, non una speranza:
+      # se l'eseguibile sfora, la build fallisce. Gli altri budget (RAM, tempo
+      # di avvio) entrano qui dalla fase 1, quando ci sara' qualcosa da misurare.
+      - name: Budget — dimensione eseguibile
+        shell: pwsh
+        run: |
+          $exe = "dist\omnibar.exe"
+          if (-not (Test-Path $exe)) { throw "eseguibile non prodotto" }
+          $kb    = [math]::Round((Get-Item $exe).Length / 1KB, 1)
+          $limit = 4096
+          Write-Host "omnibar.exe = $kb KB (limite $limit KB)"
+          if ($kb -gt $limit) { throw "budget sforato: $kb KB > $limit KB" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omnibar
+          path: dist/omnibar.exe

@@ -1,0 +1,118 @@
+# omnibar.toml — configurazione di esempio, con i default e il perché di ognuno.
+#
+# Questo file è la copia di riferimento. Quello vero vive in
+# %APPDATA%\OmniBar\omnibar.toml, oppure accanto all'eseguibile se c'è
+# `portable.flag`.
+#
+# Si modifica a mano e si salva: l'hot-reload lo applica subito. Un file con un
+# errore NON viene applicato — resta in vigore l'ultimo valido, e l'errore
+# compare con file, riga e cosa ci si aspettava.
+
+[bar]
+# Su quale bordo vive: bottom | top | left | right.
+# Sui bordi laterali lo spazio è poco: le zone a priorità bassa collassano
+# nell'overflow, e le etichette spariscono prima delle icone.
+edge = "bottom"
+
+# Larghezza della barra sul bordo lungo, in percentuale dello schermo, e come
+# è allineata: center | start | end.
+extent = 60
+align  = "center"
+
+# Su quale monitor. "cursor" la porta dove sta il mouse, "primary" la inchioda,
+# oppure l'indice del monitor.
+monitor = "cursor"
+
+# Altezza in DIP (larghezza, sui bordi laterali). Scala col DPI.
+thickness = 52
+
+# Angoli e opacità.
+corner_radius = 12
+opacity       = 0.96
+
+# auto | dark | light. `auto` segue AppsUseLightTheme e cambia a caldo.
+theme = "auto"
+
+
+[reveal]
+# La zona sensibile sul bordo, in pixel fisici. Sotto i 2 px diventa difficile
+# da colpire su schermi ad alto DPI; sopra i 6 si attiva quando non vuoi.
+trigger_px = 3
+
+# Le due soglie che evitano i falsi positivi (architecture.md §8.1): il cursore
+# deve restare nella zona per `delay_ms` E aver percorso meno di `travel_px` in
+# quel tempo. Un cursore lanciato che rimbalza sul bordo ha velocità alta e
+# viene scartato.
+delay_ms  = 180
+travel_px = 24
+
+# Isteresi in uscita: quanto aspetta prima di richiudersi quando esci.
+unhover_ms = 400
+
+# false disattiva del tutto l'apertura al passaggio del mouse: resta solo
+# l'hotkey. Su un portatile col trackpad c'è chi la preferisce così.
+on_hover = true
+
+# Mostra una maniglia discreta quando la barra è nascosta, per farsi trovare.
+peek = false
+
+
+[hotkeys]
+# Apre la barra e ci mette il focus da tastiera. La barra è navigabile
+# interamente con frecce e Invio: al bordo dello schermo col trackpad si arriva
+# male, e questa non è una scorciatoia per esperti ma la via principale su
+# laptop.
+toggle     = "Win+Space"
+pin        = "Win+Shift+Space"
+# Cattura di regione e OCR (fase 3).
+capture    = "Win+Shift+S"
+ocr        = "Win+Shift+T"
+
+
+[behavior]
+# In `Pinned` registra l'AppBar e riserva spazio: le finestre massimizzate si
+# fermano prima invece di finirci sotto.
+reserve_space_when_pinned = true
+
+# Nascondi tutto (anche la zona trigger) quando un'app va a schermo intero.
+suppress_on_fullscreen = true
+
+# Rispetta l'Assistente notifiche di Windows: in Non disturbare, niente
+# richieste di attenzione.
+respect_dnd = true
+
+# La barra non ruba MAI il focus. Non è configurabile, è nel manifesto
+# dell'architettura (§2.2). Sta qui solo per dire che non è una dimenticanza.
+
+
+[startup]
+autostart = false
+
+
+[log]
+# trace | debug | info | warn | error
+level = "info"
+
+
+# ── Estensioni ───────────────────────────────────────────────────────────────
+# Un'estensione installata non è attiva finché non le si dice di sì. Qui si
+# elencano quelle abilitate e i permessi concessi; le impostazioni le scrivono
+# anche da sole quando concedi qualcosa dalla finestra di consenso.
+
+[extensions]
+enabled = ["com.omnibar.excel", "com.omnibar.explorer"]
+
+[extensions."com.omnibar.excel"]
+granted = ["input"]
+
+[extensions."com.omnibar.explorer"]
+granted = ["input", "open"]
+
+
+# ── Zone ─────────────────────────────────────────────────────────────────────
+# Chi occupa cosa. `context` la riempie il profilo attivo, quindi non si elenca
+# qui: cambia da sola.
+
+[zones]
+pinned   = ["media", "volume", "sysmon.cpu", "sysmon.ram"]
+handle   = ["pin", "settings"]

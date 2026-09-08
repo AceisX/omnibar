@@ -1,0 +1,72 @@
+# Excel — estensione dichiarativa, nessun codice, nessun processo.
+#
+# È il tier che copre la maggior parte dei casi reali: un bottone, una
+# scorciatoia. L'host legge questo file e basta.
+
+[extension]
+id      = "com.omnibar.excel"
+name    = "Excel"
+version = "1.0.0"
+tier    = "declarative"
+
+[[profile]]
+match = { process = "EXCEL.EXE" }
+
+[[profile.widget]]
+type    = "button"
+icon    = "sigma"
+tooltip = "Somma automatica"
+action  = { kind = "keystroke", keys = "Alt+=" }
+
+[[profile.widget]]
+type    = "button"
+icon    = "percent"
+tooltip = "Formato percentuale"
+action  = { kind = "keystroke", keys = "Ctrl+Shift+5" }
+
+[[profile.widget]]
+type    = "button"
+icon    = "currency"
+tooltip = "Formato valuta"
+action  = { kind = "keystroke", keys = "Ctrl+Shift+4" }
+
+[[profile.widget]]
+type = "separator"
+
+[[profile.widget]]
+type    = "button"
+icon    = "filter"
+tooltip = "Filtro"
+action  = { kind = "keystroke", keys = "Ctrl+Shift+L" }
+
+[[profile.widget]]
+type    = "button"
+icon    = "table"
+tooltip = "Formatta come tabella"
+action  = { kind = "keystroke", keys = "Ctrl+T" }
+
+# Le voci di menu che non hanno una scorciatoia diretta si raggiungono con la
+# sequenza dei tasti di accesso. È esattamente ciò che fa un utente esperto, e
+# funziona senza automazione: nessun COM, nessun permesso in più.
+[[profile.widget]]
+type    = "button"
+icon    = "freeze"
+tooltip = "Blocca riquadri"
+action  = { kind = "macro", steps = [
+  { kind = "keystroke", keys = "Alt+W" },
+  { kind = "keystroke", keys = "F" },
+  { kind = "keystroke", keys = "F" },
+] }
+
+[[profile.widget]]
+type = "spacer"
+
+[[profile.widget]]
+type    = "button"
+icon    = "pdf"
+tooltip = "Esporta in PDF"
+action  = { kind = "macro", steps = [
+  { kind = "keystroke", keys = "Alt+F" },
+  { kind = "keystroke", keys = "E" },
+  { kind = "keystroke", keys = "A" },
+] }

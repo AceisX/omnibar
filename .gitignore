@@ -1,0 +1,32 @@
+# Toolchain portable e cache di download: si ricostruiscono con tools\get-msvc.ps1
+tools/msvc/
+tools/cmake/
+tools/ninja/
+tools/pwsh/
+tools/git/
+tools/gh/
+tools/dotnet/
+tools/wingetcreate/
+tools/_dl/
+
+# Output di build
+build/
+dist/
+out/
+
+# Configurazione locale e stato runtime
+*.local.toml
+portable.flag
+*.flag
+state/
+logs/
+
+# Editor
+.vs/
+.vscode/
+.idea/
+CMakeUserPresets.json
+
+# Sistema
+Thumbs.db
+desktop.ini

@@ -1,0 +1,72 @@
+# Photoshop — dichiarativo, con qualche nota su dove finisce questo tier.
+#
+# Tutto ciò che è una scorciatoia si fa così. Ciò che richiede di SAPERE
+# qualcosa del documento — quanti livelli ha, come si chiama il file, in che
+# spazio colore è — richiede il tier `process` e l'automazione COM, cioè
+# l'adapter della fase 5. Questo file resta comunque valido anche dopo: i due
+# tier convivono, e questo funziona anche se Adobe cambia le sue API.
+
+[extension]
+id      = "com.omnibar.photoshop"
+name    = "Photoshop"
+version = "1.0.0"
+tier    = "declarative"
+
+[[profile]]
+match = { process = "PHOTOSHOP.EXE" }
+
+[[profile.widget]]
+type    = "button"
+icon    = "export"
+tooltip = "Esporta come… (Alt+Maiusc+Ctrl+W)"
+action  = { kind = "keystroke", keys = "Ctrl+Alt+Shift+W" }
+
+[[profile.widget]]
+type    = "button"
+icon    = "save-web"
+tooltip = "Salva per il Web"
+action  = { kind = "keystroke", keys = "Ctrl+Alt+Shift+S" }
+
+[[profile.widget]]
+type = "separator"
+
+[[profile.widget]]
+type    = "button"
+icon    = "layer-new"
+tooltip = "Nuovo livello"
+action  = { kind = "keystroke", keys = "Ctrl+Shift+N" }
+
+[[profile.widget]]
+type    = "button"
+icon    = "layer-merge"
+tooltip = "Unisci visibili in un nuovo livello"
+action  = { kind = "keystroke", keys = "Ctrl+Alt+Shift+E" }
+
+[[profile.widget]]
+type    = "button"
+icon    = "mask"
+tooltip = "Maschera di livello"
+action  = { kind = "macro", steps = [
+  { kind = "keystroke", keys = "Alt+L" },
+  { kind = "keystroke", keys = "M" },
+  { kind = "keystroke", keys = "R" },
+] }
+
+[[profile.widget]]
+type = "separator"
+
+[[profile.widget]]
+type    = "button"
+icon    = "flatten"
+tooltip = "Converti in oggetto avanzato"
+action  = { kind = "macro", steps = [
+  { kind = "keystroke", keys = "Alt+L" },
+  { kind = "keystroke", keys = "S" },
+  { kind = "keystroke", keys = "C" },
+] }
+
+[[profile.widget]]
+type    = "button"
+icon    = "image-size"
+tooltip = "Dimensione immagine"
+action  = { kind = "keystroke", keys = "Ctrl+Alt+I" }

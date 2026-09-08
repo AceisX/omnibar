@@ -1,0 +1,684 @@
+# OmniBar — Architettura
+
+> La barra contestuale di Windows: nascosta su un bordo, si apre al passaggio del mouse,
+> cambia contenuto in base al programma in primo piano, e si lascia estendere da chiunque.
+> Questo documento spiega **perché** le cose sono fatte così e **quali vincoli** non si
+> violano mai. È il documento di riferimento del progetto: se una feature non trova posto
+> qui dentro, non entra nel codice.
+
+| | |
+|---|---|
+| **Target** | Windows 11 x64 (Windows 10 22H2 best-effort) |
+| **Stack** | C++20 · Win32 · Direct2D/DirectWrite · C++/WinRT · DirectComposition (opzionale) |
+| **Dipendenze** | Solo Windows SDK per l'host. Le estensioni sono libere. |
+| **Licenza** | MIT |
+| **Eredità** | Riusa e generalizza il nucleo di [MiniBar](https://github.com/AceisX/minibar-now-playing-overlay) |
+
+---
+
+## 1 · L'idea
+
+Una barra che sta su un bordo dello schermo, invisibile finché non serve, e che **cambia
+contenuto in base a cosa stai facendo**. Non un launcher, non una dock, non un pannello di
+widget: un *telecomando contestuale* per il computer.
+
+Il modello mentale è la Touch Bar dei MacBook — ma senza hardware dedicato, su qualunque PC
+Windows, e aperta a chiunque voglia aggiungerci qualcosa.
+
+Il pubblico primario è chi lavora **su un monitor solo**, o su un laptop: le persone per cui
+ogni finestra aperta è spazio rubato, per cui il drag&drop fra due cartelle è un supplizio, e
+che passano la giornata a fare Alt-Tab per premere un bottone e tornare indietro. La barra dà
+loro quei bottoni senza rubare spazio: a riposo occupa 3 pixel.
+
+Tre principi da cui discende tutto il resto:
+
+- **Il costo a riposo è zero.** La barra è sempre in esecuzione, quindi deve costare come se
+  non lo fosse. Nessun render loop, nessun polling costoso, moduli e plugin spenti finché il
+  loro contesto non si accende. Se una feature non rispetta il budget della §3, non entra.
+- **Mai toccare gli altri processi.** Niente injection, niente hook globali, niente driver
+  kernel. Tutto ciò che OmniBar sa degli altri programmi lo impara da API pubbliche
+  out-of-process. È ciò che la rende sicura accanto a un anti-cheat e installabile senza far
+  suonare Defender.
+- **L'host renderizza, le estensioni descrivono.** Un'estensione non riceve mai una superficie
+  di disegno. Dichiara un albero di widget; l'host lo disegna. Da qui vengono coerenza visiva,
+  isolamento dai crash, sicurezza, e la libertà di scrivere un plugin in qualsiasi linguaggio.
+
+---
+
+## 2 · Vincoli non negoziabili
+
+1. **Nessuna DLL injection, nessun hook su DirectX/Vulkan, nessun `SetWindowsHookEx` globale,
+   nessun driver kernel.** Sono i pattern che EAC, BattlEye e Vanguard trattano come cheat, e
+   quelli che rendono un installer sospetto. Tutto passa da API "da fuori":
+   `SetWinEventHook` in `WINEVENT_OUTOFCONTEXT`, `GetCursorPos`, Core Audio, PDH, COM
+   automation, WinRT.
+2. **La barra non ruba mai il focus.** Nemmeno quando chiede attenzione. `WS_EX_NOACTIVATE`
+   sempre, `SW_SHOWNOACTIVATE` sempre. Una barra che ti porta via il cursore dal testo che
+   stai scrivendo viene disinstallata il giorno stesso.
+3. **Un'estensione non può degradare la barra.** Gira fuori processo, con timeout e budget di
+   messaggi. Se non risponde, il suo pannello mostra un errore e il resto continua.
+4. **Ogni capability è dichiarata e approvata.** Eseguire comandi, simulare tastiera, leggere
+   gli appunti, uscire in rete: sono privilegi che un'estensione dichiara nel manifest e che
+   l'utente concede esplicitamente. Non esistono per default.
+5. **Nessun account obbligatorio, nessuna telemetria, nessuna rete non richiesta.** L'app
+   funziona offline. Le uniche connessioni sono quelle che un'estensione dichiara e che
+   l'utente ha approvato.
+6. **Portable prima di tutto.** L'app deve poter girare da una chiavetta senza scrivere nulla
+   fuori dalla propria cartella. L'installer è una comodità, non un requisito.
+7. **Accettato per design:** sopra il fullscreen *esclusivo* la barra non si vede. Nessun
+   workaround. Il borderless windowed, che è quello che usano quasi tutti i giochi oggi,
+   funziona.
+
+### 2.1 · L'unica eccezione: l'helper elevato
+
+OmniBar gira **non elevata**. Conseguenza di UIPI: non può mandare input a finestre di
+processi elevati (Task Manager, regedit, un'app lanciata come amministratore). Per chi ne ha
+bisogno esiste `omnibar-helper.exe`, **opzionale**, installato a parte, che gira elevato e fa
+**solo** ciò per cui servono i privilegi.
+
+Le regole che lo rendono accettabile invece che un buco:
+
+- **Vocabolario chiuso.** Il helper accetta un insieme fisso di comandi tipizzati
+  (`send_input`, `read_sensor`, …). Non esiste un comando "esegui questa stringa". Mai.
+- **Named pipe con ACL sul solo utente corrente**, più un token di sessione generato all'avvio
+  e passato all'host: un altro processo dell'utente non può parlargli.
+- **Nessun avvio automatico per default.** Parte su richiesta, si spegne dopo l'inattività.
+- **Non carica estensioni.** Le estensioni non parlano mai con il helper: passano dall'host,
+  che filtra.
+- Il codice del helper sta in una cartella a sé, è piccolo per costruzione, e ogni riga che ci
+  si aggiunge è una decisione di sicurezza da motivare in `docs/security.md`.
+
+---
+
+## 3 · Budget prestazioni
+
+Requisiti, non speranze. La CI misura e fallisce se si sfora.
+
+| Metrica | Target | Note |
+|---|---|---|
+| RAM host a riposo, nessun modulo attivo | **< 25 MB** | private working set |
+| RAM host a regime, moduli built-in attivi | **< 60 MB** | con sysmon, media, shelf |
+| CPU a riposo (barra nascosta) | **≈ 0,0 %** | media su 60 s, cursore lontano |
+| CPU durante l'animazione di apertura | < 2 % di un core | 0 % se il backend di composizione muove la visual |
+| GPU a riposo | 0 % | nessun lavoro fra un ridisegno e l'altro |
+| Avvio → barra pronta a reagire | **< 250 ms** | processo lanciato → zona trigger attiva |
+| Latenza hover → barra visibile | **< 80 ms** | percepita come istantanea |
+| Latenza click → azione partita | **< 30 ms** | |
+| Dimensione host | ≤ 4 MB | eseguibile singolo, CRT statica |
+| Impatto sul frametime di un gioco | non misurabile | PresentMon con e senza barra |
+
+Il principio che li rende raggiungibili è quello di MiniBar portato alle estreme conseguenze:
+**zero lavoro se non cambia niente**, esteso a **zero processi se non servono**. Con cinquanta
+estensioni installate, a riposo ne girano zero.
+
+---
+
+## 4 · Decisioni e motivi
+
+| Decisione | Scelta | Motivo |
+|---|---|---|
+| Linguaggio / UI | C++20, Win32 + Direct2D | La barra è sempre residente: il costo a riposo è il vincolo dominante. WebView2 costa 60-100 MB e un processo figlio; .NET costa un runtime; Electron è fuori discussione. Il nativo sta in pochi MB e parla direttamente col sistema. |
+| Rendering | D2D software + `UpdateLayeredWindow`, con backend DirectComposition selezionabile | MiniBar ha misurato la composizione a 37,7 MB / 26 thread contro 8,7 MB / 11 thread — verdetto giusto per 266×45 px ridisegnati una volta al secondo. OmniBar è larga quanto lo schermo e si anima: uno slide fatto come trasformazione DComp non ci costa **niente**, con `UpdateLayeredWindow` costa un memcpy a tutta larghezza per frame. Quindi `renderer = auto/composition/layered`, deciso da una misura fatta su OmniBar. |
+| Modello UI | Layer retained-mode proprietario: albero widget, layout flex, animazioni, hit-test, UIA | È l'investimento fondante: ci sta sopra tutto il resto. Fatto bene, un modulo nuovo costa mezza giornata invece di una settimana. E senza provider UIAutomation l'app non è installabile "di default per tutti". |
+| Estensioni | Dichiarano un albero di widget, non disegnano | Coerenza visiva, isolamento dai crash, sicurezza (nessuna finta finestra di login sulla barra), qualsiasi linguaggio, un solo renderer da ottimizzare. |
+| Transport estensioni | JSON-RPC 2.0 su named pipe, un processo per estensione | Language-agnostic, crash-isolato, supervisionabile, con timeout. Se sa scrivere JSON su una pipe, è un plugin. |
+| Estensioni senza codice | Tier dichiarativo: un TOML con bottoni → scorciatoia / comando / URL | Copre l'80% dei casi (comandi rapidi di Office, Adobe, browser) con zero righe di codice, e rende la barra customizzabile da chi non programma. |
+| Contesto | `SetWinEventHook` out-of-context + snapshot tipizzato + rule matcher | Reagire al cambio di foreground è pulito e gratuito. Il contesto non è solo "quale app": include stato (registrazione in corso, batteria, IA in attesa). |
+| Configurazione | TOML, per profilo, con hot-reload | L'INI di MiniBar non regge profili annidati e liste di widget. TOML è leggibile e scrivibile a mano, che resta un requisito. |
+| Posizione config | `%APPDATA%\OmniBar\`, modalità portable accanto all'eseguibile | Portable resta possibile; il default segue le convenzioni di Windows perché l'obiettivo è l'installazione di massa. |
+| Icone | Segoe Fluent Icons di sistema + set proprio come path vettoriali compilati | Nessun file immagine da caricare, scalano a ogni DPI, costano nulla. |
+| Build | CMake + Ninja + MSVC, CRT statica, toolchain portable in `tools\` | Ereditata da MiniBar: eseguibile singolo senza VC Redist, ambiente ricostruibile da pacchetti ufficiali senza installare niente. |
+
+---
+
+## 5 · Architettura
+
+### 5.1 · Modello a processi
+
+```
+omnibar.exe                    host — sempre in esecuzione, non elevato
+  ├── omnibar-ext-<id>.exe     un processo per estensione attiva (lazy start/stop)
+  ├── omnibar-editor.exe       editor dei profili — avviato su richiesta, chiuso subito
+  └── omnibar-helper.exe       opzionale, elevato, vocabolario chiuso (§2.1)
+```
+
+L'host è l'unico processo residente. Tutto il resto nasce quando serve e muore quando non
+serve più. Un'estensione che crasha viene riavviata con backoff; alla terza volta in un minuto
+resta spenta e il suo pannello mostra il perché.
+
+### 5.2 · Strati dell'host
+
+| Strato | Responsabilità |
+|---|---|
+| `core` | Event loop, scheduler dei timer, bus dei messaggi, logging, crash handler, single-instance. |
+| `shell` | Finestre, macchina a stati del bordo (§8), zona trigger, DPI per-monitor, multi-monitor, tema, tray, hotkey globali, AppBar quando si riserva spazio. |
+| `render` | Backend di disegno (layered software / composizione), atlas delle icone, testo, temi. |
+| `ui` | Layer retained-mode: albero widget, layout flex, animazioni, hit-test, tastiera, provider UIAutomation. È il vocabolario della §6. |
+| `context` | Foreground watcher, `ContextSnapshot`, sorgenti dei tag, rule matcher, risoluzione del profilo attivo. |
+| `action` | `ActionBus`: esecuzione tipizzata di keystroke / shell / url / internal / rpc / macro, con controllo dei permessi e rate limit. |
+| `modules` | Moduli built-in in-process: media, volume, sysmon, capture, shelf, window-manager, clipboard, notes. |
+| `exthost` | Supervisore delle estensioni: manifest, lifecycle, named pipe, JSON-RPC, timeout, permessi, sandbox del processo. |
+| `config` | TOML: schema, validazione con errori leggibili, merge dei livelli, hot-reload, migrazione di versione. |
+| `localapi` | Endpoint locale per strumenti esterni: hook di Claude Code, CLI `omnibar`, script. |
+
+**Regola di dipendenza:** gli strati si vedono solo verso il basso, e `modules` / `exthost`
+non conoscono `render`. Un modulo produce widget, non pixel — esattamente come un'estensione.
+Così un modulo built-in può essere estratto in un'estensione (o viceversa) senza riscritture.
+
+### 5.3 · Il flusso di un frame
+
+```
+evento (foreground / timer / pipe / input)
+   → aggiorna stato del produttore (modulo o estensione)
+   → produttore emette albero widget
+   → LayoutEngine fa il diff con l'albero precedente
+   → se qualcosa è cambiato: layout → disegno della sola regione sporca → present
+   → altrimenti: niente
+```
+
+Il diff dell'albero è ciò che rende sostenibile avere widget che si aggiornano spesso: un
+`meter` della CPU che cambia valore ridisegna il proprio rettangolo, non la barra.
+
+---
+
+## 6 · Il modello dei widget
+
+È il cuore del progetto. Un produttore (modulo o estensione) restituisce un albero JSON di
+nodi presi da un **vocabolario chiuso**. L'host lo valida, ne fa il diff, lo dispone e lo
+disegna.
+
+### 6.1 · Vocabolario v1
+
+| Widget | A cosa serve | Stato |
+|---|---|---|
+| `button` | azione singola; icona, etichetta, o entrambe | `enabled`, `pressed`, `badge` |
+| `toggle` | on/off persistente | `on` |
+| `segmented` | scelta fra 2-5 opzioni | `selected` |
+| `slider` | valore continuo (volume, opacità, dimensione pennello) | `value`, `min`, `max` |
+| `meter` | percentuale con colore soglia (CPU, RAM, batteria) | `value`, `thresholds` |
+| `sparkline` | serie storica breve | ring buffer, N campioni |
+| `progress` | avanzamento determinato o indeterminato | `value` o `indeterminate` |
+| `label` | testo, con marquee se sborda | `text`, `emphasis` |
+| `image` | miniatura (copertina, anteprima file) | sorgente scalata a display size |
+| `swatch` | colore | `rgba` |
+| `badge` | pallino/contatore su un altro widget | numero o punto |
+| `group` | contenitore con direzione, gap, allineamento | flex |
+| `separator`, `spacer` | struttura | |
+| `panel` | contenitore che apre lo stato `Expanded` (§8) | può contenere `list`, `grid` |
+| `list` / `grid` | solo dentro `panel`: righe/celle selezionabili e trascinabili | virtualizzate |
+| `prompt` | domanda con risposte (Consenti / Nega / Sempre) — forza `Attention` | timeout, default |
+
+Aggiungere un widget al vocabolario è una decisione architetturale, non una feature: va
+motivata, disegnata per tutti i temi e i DPI, e coperta da golden-image test.
+
+### 6.2 · Un albero, in concreto
+
+```json
+{
+  "id": "sysmon",
+  "widget": {
+    "type": "group", "direction": "row", "gap": 8,
+    "children": [
+      { "type": "meter", "id": "cpu", "label": "CPU", "value": 0.34,
+        "thresholds": [0.7, 0.9] },
+      { "type": "sparkline", "id": "cpu.hist", "samples": [12, 18, 34, 29] },
+      { "type": "meter", "id": "gpu", "label": "GPU", "value": 0.71 },
+      { "type": "button", "id": "open", "icon": "chart", "tooltip": "Dettagli",
+        "action": { "kind": "internal", "name": "sysmon.expand" } }
+    ]
+  }
+}
+```
+
+L'host risponde agli eventi con `widget/event`:
+
+```json
+{ "method": "widget/event",
+  "params": { "id": "cpu", "kind": "click", "modifiers": ["ctrl"] } }
+```
+
+### 6.3 · Perché un vocabolario chiuso e non "disegna quello che vuoi"
+
+| Se le estensioni disegnassero | Con il vocabolario chiuso |
+|---|---|
+| 40 plugin, 40 stili diversi | tutto sembra OmniBar, e cambia con il tema |
+| un plugin lento blocca il frame | un plugin lento fa scadere il suo timeout, il frame no |
+| un plugin può disegnare una finta richiesta di password | non ha pixel su cui farlo |
+| ottimizzare il rendering è impossibile | un solo renderer da ottimizzare |
+| il plugin deve conoscere D2D e i DPI | il plugin scrive JSON |
+| l'accessibilità è irrecuperabile | l'albero widget *è* l'albero UIA |
+
+L'ultimo punto da solo basterebbe: con un vocabolario chiuso l'accessibilità si ottiene una
+volta nell'host, per tutte le estensioni, per sempre.
+
+---
+
+## 7 · Il context engine
+
+### 7.1 · Lo snapshot
+
+Prodotto a ogni cambio di foreground (evento, non polling) e a ogni cambio di tag:
+
+```
+ContextSnapshot {
+  process_name        "PHOTOSHOP.EXE"
+  process_path        "C:\Program Files\Adobe\...\Photoshop.exe"
+  aumid               (per le app impacchettate)
+  window_class        "Photoshop"
+  window_title        "logo-cliente.psd @ 66,7% (RGB/8)"
+  monitor             HMONITOR + DPI
+  is_fullscreen       bool
+  document_path       opzionale, da un adapter o da UIA
+  explorer_folder     opzionale, quando il foreground è Esplora file
+  explorer_selection  opzionale, i file selezionati
+  tags[]              recording · in_call · on_battery · ai_waiting · dnd · low_disk …
+}
+```
+
+I **tag** sono la parte che distingue OmniBar da una semplice barra per-app: il contesto non
+è soltanto *quale programma*, è anche *cosa sta succedendo*. "OBS sta registrando" e "l'IA
+aspetta una risposta" sono contesti quanto "Photoshop è davanti". Ogni tag ha una sorgente
+dichiarata (un modulo o un'estensione) e un costo: le sorgenti costose si attivano solo se
+almeno una regola le usa.
+
+### 7.2 · Risoluzione del profilo
+
+Le regole si valutano dalla più specifica alla più generica; la prima che matcha vince, e le
+regole dell'utente battono sempre quelle di default:
+
+```
+1. regola utente con match su processo + titolo/tag
+2. regola utente con match su processo
+3. profilo dell'estensione per quel processo
+4. profilo di categoria (browser, office, editor grafico, IDE, gioco)
+5. profilo di default
+```
+
+Il risultato è un **Profilo**: quali produttori occupano quali zone, in quale ordine, con
+quale layout. Il cambio di profilo è animato con un cross-fade breve, e i widget con lo stesso
+`id` mantengono la propria posizione invece di sparire e riapparire.
+
+### 7.3 · Le zone
+
+La barra è divisa in zone con priorità diversa. Con poco spazio (bordo laterale, schermo
+piccolo) le zone a priorità bassa collassano nell'overflow.
+
+| Zona | Contenuto | Priorità |
+|---|---|---|
+| `alert` | richieste che pretendono risposta: approvazione IA, temperatura critica | massima, sopra tutto |
+| `pinned` | ciò che l'utente vuole sempre: media, meter, orologio | alta |
+| `context` | i produttori del profilo attivo | media, è quella che cambia |
+| `overflow` | ciò che non ci sta, dietro un bottone | bassa |
+| `handle` | pin, impostazioni, indicatore di stato | fissa |
+
+---
+
+## 8 · La macchina a stati della barra
+
+```
+              hover sul bordo (soglia tempo + distanza)
+   Hidden ──────────────────────────────────────────► Revealed
+     ▲                                                  │ │
+     │        uscita cursore + isteresi                 │ │  click sul pin
+     └──────────────────────────────────────────────────┘ ▼
+                                                        Pinned ──► (AppBar: riserva spazio)
+   qualunque stato ──[ un produttore chiede attenzione ]──► Attention
+   Revealed/Pinned ──[ un widget apre il suo panel ]──────► Expanded
+   qualunque stato ──[ fullscreen escl. / presentazione / DND ]──► Suppressed
+```
+
+| Stato | Cosa si vede | Note |
+|---|---|---|
+| `Hidden` | una striscia trigger di 2-3 px sul bordo, o niente se si usa solo l'hotkey | default |
+| `Peek` | una maniglia discreta, opzionale | serve a farsi trovare dai nuovi utenti |
+| `Revealed` | la barra aperta | si richiude da sola quando il cursore esce, con isteresi |
+| `Pinned` | aperta e fissata | opzionalmente registra l'AppBar e riserva spazio |
+| `Attention` | aperta, con un bordo che pulsa e il widget `prompt` in zona `alert` | **non si richiude da sola**; non ruba il focus |
+| `Expanded` | un pannello più grande sopra la barra | grafici, shelf, liste |
+| `Suppressed` | niente, nemmeno la zona trigger | fullscreen esclusivo, presentazione, DND |
+
+### 8.1 · Perché il reveal è più difficile di quanto sembri
+
+Tre problemi che decidono se la barra è piacevole o insopportabile dopo due giorni:
+
+- **Falsi positivi.** Un cursore che sfiora il bordo mentre va altrove non deve aprire niente.
+  Serve una soglia doppia: il cursore deve restare nella zona trigger per `reveal_delay_ms` **e**
+  aver percorso meno di `reveal_travel_px` in quel tempo. Un cursore lanciato che rimbalza sul
+  bordo ha una velocità alta: si scarta.
+- **Conflitti con Windows.** La zona trigger non deve coprire l'area della taskbar (nemmeno se
+  in auto-hide), gli hot corner, né il bordo dove Windows apre gli snap layout. Le esclusioni si
+  ricalcolano a ogni `ABN_POSCHANGED` e a ogni cambio di risoluzione: mai memorizzate.
+- **Il laptop.** Al bordo dello schermo col trackpad ci si arriva male. Serve una scorciatoia
+  globale che apra la barra e ci metta il focus da tastiera, e la barra deve essere navigabile
+  interamente con le frecce e Invio, senza mai toccare il mouse.
+
+---
+
+## 9 · Azioni e permessi
+
+Ogni cosa cliccabile produce un'`Action` tipizzata. L'`ActionBus` la valida contro i permessi
+del produttore prima di eseguirla.
+
+| Kind | Cosa fa | Capability richiesta |
+|---|---|---|
+| `internal` | chiama una funzione dell'host (volume, media, screenshot, cambio profilo) | nessuna |
+| `keystroke` | `SendInput` verso la finestra target | `input` |
+| `shell` | esegue un eseguibile con argomenti (mai una stringa di shell) | `exec` |
+| `url` | apre un URL o un URI scheme | `open` |
+| `rpc` | chiama un metodo dell'estensione che ha prodotto il widget | implicita |
+| `macro` | sequenza di azioni con attese, con lo stesso controllo su ognuna | l'unione |
+
+Note che sono decisioni di sicurezza, non dettagli:
+
+- `shell` prende **eseguibile + array di argomenti**, mai una riga di comando da concatenare.
+  Non esiste un modo di scrivere una command injection nella configurazione.
+- `keystroke` non manda mai input "in generale": ha un target esplicito (la finestra di
+  foreground al momento del click, catturata prima che la barra la tocchi), e si rifiuta se il
+  target è cambiato nel frattempo.
+- Le capability sono nel manifest dell'estensione, e la richiesta all'utente **dice cosa
+  significano**: non "questa estensione richiede exec", ma "potrà avviare programmi sul tuo PC".
+- Rate limit per produttore: nessuna estensione può inondare l'`ActionBus`.
+
+---
+
+## 10 · Moduli built-in
+
+I moduli vivono nell'host per motivi di latenza o perché usano API che non ha senso duplicare.
+Espongono la stessa interfaccia delle estensioni (producono widget, ricevono eventi), quindi
+la linea fra "modulo" ed "estensione" è una scelta di packaging, non di architettura.
+
+| Modulo | Fonte dati | Note |
+|---|---|---|
+| `media` | SMTC (`Windows.Media.Control`) | **portato da MiniBar**: sessioni, metadati, copertina, tinta dominante, comandi, interpolazione della timeline |
+| `volume` | Core Audio (`IAudioSessionManager2`, `ISimpleAudioVolume`) | **portato da MiniBar**: volume di sistema, per-app, cambio dispositivo di output |
+| `sysmon` | PDH (CPU, RAM, disco, rete, `GPU Engine`), NVML / ADLX / IGCL caricate dinamicamente | temperature: vedi §10.1 |
+| `capture` | `Windows.Graphics.Capture`, `Windows.Media.Ocr` | screenshot di regione/finestra, registrazione breve, OCR offline della regione |
+| `shelf` | `IDropTarget` + shell COM | area di sosta per il drag&drop dei file (§11.1) |
+| `window` | `SetWindowPos`, `EnumWindows`, virtual desktop API | snap in zone, sposta su metà/terzo, modalità focus |
+| `clipboard` | `AddClipboardFormatListener` | cronologia locale, pin, mai in rete |
+| `power` | `GetSystemPowerStatus`, power scheme API | batteria, piano energetico, luminosità, night light |
+| `notes` | file locale | blocco note volante ancorato alla barra |
+
+### 10.1 · Le temperature: dove finisce l'onestà tecnica
+
+Leggere la temperatura della **CPU** in modo affidabile su Windows richiede l'accesso a MSR o
+al Super I/O: cioè un driver ring-0. Gli strumenti che lo fanno (LibreHardwareMonitor, HWiNFO)
+ne spediscono uno. Per OmniBar è escluso dal vincolo §2.1: un driver kernel firmato è un
+problema di sicurezza, di firma, di falsi positivi anti-cheat e di installer, tutto in una
+volta.
+
+La strategia, in ordine di preferenza:
+
+1. **GPU** — NVML (NVIDIA), ADLX (AMD), IGCL (Intel), caricate con `LoadLibrary` a runtime. Se
+   la libreria non c'è, il widget non appare. Nessuna dipendenza a build time.
+2. **CPU e sensori scheda madre** — se l'utente ha **già** HWiNFO o LibreHardwareMonitor in
+   esecuzione, se ne leggono i valori dalla loro shared memory / dal loro web server locale.
+   Zero driver nostri: si usa quello che l'utente ha già scelto di installare.
+3. **Se non c'è nessuna delle due** — il widget della temperatura non compare, e le
+   impostazioni spiegano in una riga perché e cosa installare. Meglio un'assenza spiegata di un
+   numero inventato.
+
+---
+
+## 11 · I moduli che rispondono al "monitor solo"
+
+Sono le funzioni pensate specificamente per il pubblico primario, e vale la pena spiegarle
+perché non sono ovvie.
+
+### 11.1 · File Shelf
+
+Trascini dei file verso il bordo: la barra si apre e li accoglie. Restano parcheggiati, con
+miniatura. Navighi dove vuoi, anche chiudendo la finestra di partenza. Poi li trascini fuori.
+
+Su un monitor solo, spostare file fra due cartelle costa o due finestre affiancate (metà
+schermo ciascuna) o taglia/incolla con la memoria di dove eri. La shelf toglie il problema, e
+non esiste su Windows.
+
+Dettagli: la shelf tiene **riferimenti**, non copie, finché non si trascina fuori (e allora è
+Windows a fare la copia/spostamento con la sua semantica). Sopravvive al riavvio. Un file
+sparito dal disco resta come voce barrata invece di svanire in silenzio. Accetta anche testo e
+immagini dagli appunti, non solo file.
+
+### 11.2 · Cattura e OCR
+
+`Windows.Media.Ocr` è nel sistema, funziona offline, non costa niente e riconosce decine di
+lingue. Selezione di una regione → testo negli appunti. È la funzione che chi ha un monitor
+solo usa venti volte al giorno: copiare un dato da una finestra a un'altra senza poterle vedere
+insieme.
+
+Da lì il passo successivo è naturale: la stessa regione → "manda all'IA", "traduci",
+"spiegami".
+
+### 11.3 · Azioni IA sulla selezione
+
+Selezioni del testo in *qualsiasi* programma, premi un bottone della barra: OmniBar prende la
+selezione (copia negli appunti, salvando e ripristinando il contenuto precedente), la manda al
+modello configurato, e rimette il risultato. Traduci, riscrivi, riassumi, correggi, spiega.
+
+Funziona ovunque **senza integrazione per app**, ed è il senso vero di "barra per l'era
+dell'IA": non un'altra chat, ma il modello dove stai già lavorando.
+
+---
+
+## 12 · Estensioni
+
+### 12.1 · I due tier
+
+**Dichiarativo** — nessun processo, nessun codice. Un TOML che l'host legge:
+
+```toml
+[extension]
+id      = "com.omnibar.excel"
+name    = "Excel"
+version = "1.0.0"
+tier    = "declarative"
+
+[[profile]]
+match = { process = "EXCEL.EXE" }
+
+[[profile.widget]]
+type = "button"; icon = "sigma"; tooltip = "Somma automatica"
+action = { kind = "keystroke", keys = "Alt+=" }
+
+[[profile.widget]]
+type = "button"; icon = "percent"; tooltip = "Formato percentuale"
+action = { kind = "keystroke", keys = "Ctrl+Shift+5" }
+
+[[profile.widget]]
+type = "button"; icon = "freeze"; tooltip = "Blocca riquadri"
+action = { kind = "macro", steps = [
+  { kind = "keystroke", keys = "Alt+W" },
+  { kind = "keystroke", keys = "F" },
+  { kind = "keystroke", keys = "F" } ] }
+```
+
+**Processo** — un eseguibile che parla JSON-RPC 2.0 su una named pipe:
+
+```toml
+[extension]
+id      = "com.omnibar.obs"
+tier    = "process"
+entry   = "obs-adapter.exe"
+
+[capabilities]
+network = ["ws://127.0.0.1:4455"]     # solo questo endpoint, niente altro
+
+[activation]
+processes = ["obs64.exe"]              # lazy: parte quando OBS parte
+idle_stop_sec = 30                     # e si spegne quando OBS chiude
+```
+
+### 12.2 · Il protocollo
+
+| Direzione | Metodo | Significato |
+|---|---|---|
+| host → ext | `initialize` | versione del protocollo, capability concesse, tema, DPI, locale |
+| host → ext | `context/changed` | nuovo `ContextSnapshot` |
+| host → ext | `widget/event` | click, cambio valore, hover, drop |
+| host → ext | `shutdown` | chiusura ordinata, poi kill dopo timeout |
+| ext → host | `widget/update` | nuovo albero (o patch) per una zona |
+| ext → host | `attention/request` | chiedi lo stato `Attention` con un `prompt` |
+| ext → host | `tag/set` | accendi o spegni un tag di contesto |
+| ext → host | `action/invoke` | esegui un'azione — passa dal controllo permessi |
+| ext → host | `notify` | messaggio non bloccante |
+
+Ogni chiamata ha un timeout. Un'estensione che non risponde entro `budget_ms` viene marcata
+lenta; se persiste, sospesa. Il suo pannello dice cosa è successo, in italiano, non "error 3".
+
+### 12.3 · Sandbox del processo estensione
+
+Nessun privilegio in più dell'host, e quando possibile qualcuno in meno: job object con limiti
+di memoria e CPU, nessuna ereditarietà di handle, working directory nella propria cartella,
+variabili d'ambiente ripulite. Le capability di rete sono documentate nel manifest ma
+**non** applicate a livello di sistema in v1: è una promessa verificabile leggendo il manifest,
+non una gabbia. Questo va detto all'utente senza girarci intorno.
+
+---
+
+## 13 · LocalAPI e integrazione con l'IA
+
+Un endpoint locale (named pipe + un piccolo HTTP su loopback per gli strumenti che parlano solo
+HTTP) permette a strumenti esterni di usare la barra.
+
+### 13.1 · Approvazioni
+
+Claude Code ha un sistema di **hook**: un hook `PreToolUse` può invocare un comando esterno che
+decide se permettere, negare o chiedere. L'integrazione è diretta:
+
+```
+Claude Code vuole eseguire uno strumento
+   → hook PreToolUse chiama `omnibar ask --tool Bash --detail "rm -rf build/"`
+   → il CLI parla alla LocalAPI
+   → la barra entra in Attention e mostra un widget prompt: [Consenti] [Nega] [Sempre]
+   → l'utente risponde sulla barra, senza cambiare finestra
+   → il CLI restituisce la decisione, l'hook la passa a Claude Code
+```
+
+Valore: le approvazioni sono la cosa che rompe di più il flusso quando si lavora con un agente,
+e su un monitor solo costano un Alt-Tab ognuna. Sulla barra costano un click senza spostare lo
+sguardo dal lavoro.
+
+Vincoli: il prompt ha sempre un **timeout con default sicuro** (nega), mostra *sempre* il testo
+integrale di ciò che sta approvando, e "Sempre" scrive una regola visibile e revocabile — mai
+una scorciatoia opaca.
+
+### 13.2 · Utilizzo e limiti
+
+Non esiste un'API pubblica che dica quanto resta del piano di un abbonamento Claude. Va detto
+chiaramente invece di promettere un numero. L'architettura è quindi un'interfaccia
+`UsageProvider` con più implementazioni, ognuna onesta su cosa sa:
+
+| Provider | Da dove | Cosa sa davvero |
+|---|---|---|
+| `claude-code-local` | dati di sessione locali di Claude Code | token e costo delle sessioni su questa macchina |
+| `claude-code-otel` | metriche OpenTelemetry che Claude Code può emettere | uso nel tempo, se l'utente abilita la telemetria locale |
+| `anthropic-admin` | Admin API, con API key dell'utente | spesa e uso dell'organizzazione via API |
+| `generic-openai` etc. | API key dell'utente | uso via API di altri provider |
+
+Nessuno di questi legge la quota di un abbonamento consumer. Il widget mostra ciò che sa, con
+l'etichetta di dove viene, e non inventa il resto.
+
+---
+
+## 14 · Configurazione
+
+```
+%APPDATA%\OmniBar\
+  omnibar.toml              impostazioni globali
+  profiles\<nome>.toml      profili utente
+  extensions\<id>\          estensioni installate
+  state\                    shelf, cronologia appunti, note (dati, non impostazioni)
+```
+
+In modalità portable la stessa struttura vive accanto all'eseguibile: se esiste
+`portable.flag`, si usa quella e non si tocca `%APPDATA%`.
+
+Merge dei livelli, dal più debole al più forte: default compilati → profili delle estensioni →
+`omnibar.toml` → profili utente → override della sessione corrente.
+
+Hot-reload su `ReadDirectoryChangesW`. Un file con un errore **non viene applicato**: si tiene
+la versione precedente e si mostra l'errore con file, riga e cosa ci si aspettava. Una barra
+che sparisce per un TOML sbagliato è un bug, non un messaggio d'errore.
+
+---
+
+## 15 · Threading
+
+La disciplina di MiniBar, invariata perché ha funzionato:
+
+- **Un solo thread UI** con il message loop. Tutto lo stato dell'interfaccia vive lì.
+- Gli eventi che arrivano da fuori — WinRT, named pipe, PDH, COM, watcher del filesystem —
+  girano su thread di threadpool e **non toccano mai lo stato**: impacchettano i dati e li
+  rimandano al thread UI con `PostMessage`, con un numero di generazione che scarta i messaggi
+  in volo di un contesto ormai sostituito.
+- Il lavoro lungo (decodifica di miniature, OCR, COM automation) va su un worker pool con
+  cancellazione; il risultato torna sul thread UI come tutto il resto.
+- Un solo timer per le animazioni, attivo solo mentre qualcosa si muove.
+
+Risultato: zero lock, zero race.
+
+---
+
+## 16 · Test
+
+| Livello | Cosa |
+|---|---|
+| **Simulatore** | La barra gira in una finestra normale con contesti finti, iniettati da uno script. Si sviluppa il pannello di Photoshop senza Photoshop, e si prova lo stato `Attention` senza aspettare che un agente chieda un permesso. È anche ciò che rende testabile la UI in CI. |
+| **Golden image** | Ogni widget, in ogni tema, a 100/125/150/200 % di DPI, confrontato pixel per pixel a ogni commit. |
+| **Replay dei contesti** | Log ring-buffer degli snapshot; un bug di contesto si riproduce rigiocando il log invece di ricreare la situazione a mano. |
+| **Unità** | Rule matcher, merge della configurazione, diff dell'albero widget, parser TOML, validazione delle azioni. |
+| **Budget** | La CI misura RAM, tempo di avvio e dimensione dell'eseguibile e fallisce se si sfora la §3. |
+| **Fuzzing** | Sul JSON-RPC delle estensioni e sui file di configurazione: sono i due ingressi non fidati. |
+
+---
+
+## 17 · Rischi e mitigazioni
+
+| Rischio | Mitigazione |
+|---|---|
+| Il reveal si attiva quando non lo vuoi | Soglia doppia tempo + distanza (§8.1), isteresi in uscita, zone di esclusione ricalcolate, possibilità di disattivare l'hover e usare solo l'hotkey |
+| Conflitto con la taskbar in auto-hide o con gli snap layout | Rettangoli mai memorizzati: ricalcolo a ogni `ABN_*`, `WM_DPICHANGED` e cambio risoluzione |
+| Un'estensione lenta o che crasha | Fuori processo, timeout, budget, riavvio con backoff, sospensione dopo ripetuti crash |
+| Un'estensione ostile | Vocabolario widget chiuso (niente pixel arbitrari), capability dichiarate e approvate, `shell` senza stringhe di comando, rate limit |
+| Adobe abbandona COM per UXP | Ogni adapter degrada a scorciatoie da tastiera; l'adapter è un'estensione sostituibile senza toccare l'host |
+| Nessun modo onesto di leggere le quote dell'abbonamento IA | Interfaccia `UsageProvider` con etichetta della fonte; si mostra ciò che si sa, non si inventa |
+| Temperature CPU senza driver | GPU da NVML/ADLX/IGCL, CPU solo se l'utente ha già HWiNFO/LHM, altrimenti il widget non compare e le impostazioni spiegano perché |
+| L'helper elevato diventa un buco | Vocabolario chiuso, pipe con ACL, token di sessione, nessun avvio automatico, revisione di sicurezza per ogni comando aggiunto |
+| Falso positivo anti-cheat o antivirus | Nessuna injection né hook né driver per design; stesso profilo di EarTrumpet o del flyout del volume |
+| Il progetto diventa ingestibile | Il vocabolario widget e il modello a produttori sono un limite volontario: una feature che non ci sta dentro va ripensata, non aggiunta di lato |
+
+---
+
+## 18 · Fuori scope
+
+- Visibilità sopra il fullscreen esclusivo (per design, §2).
+- Un launcher / ricerca universale stile Raycast: è un prodotto a sé e compete con PowerToys Run.
+- Piattaforme diverse da Windows. L'architettura non lo esclude, il progetto sì.
+- Sincronizzazione cloud dei profili, account, marketplace ospitato — non in v1.
+- Sostituire la taskbar o il menu Start.
+- Qualunque cosa richieda un hook, un'iniezione o un driver.
+
+> Ogni volta che una feature sembra richiedere un'eccezione alla §2, la risposta giusta è quasi
+> sempre "no": o rientra nei vincoli, o non fa parte di OmniBar.
+
+---
+
+## 19 · Riferimenti API
+
+| Area | API |
+|---|---|
+| Finestre e bordo | `CreateWindowExW`, `WS_EX_NOACTIVATE/TOPMOST/TOOLWINDOW/LAYERED`, `SetWindowPos`, `UpdateLayeredWindow`, `SHAppBarMessage` (`ABM_*`, `ABN_*`), `WM_DPICHANGED`, `WM_SETTINGCHANGE` |
+| Composizione | `DCompositionCreateDevice`, `IDCompositionTarget`, `IDCompositionVisual`, `WS_EX_NOREDIRECTIONBITMAP` |
+| Rendering | Direct2D, DirectWrite, WIC |
+| Accessibilità | UI Automation provider (`IRawElementProviderSimple` e affini) |
+| Contesto | `SetWinEventHook` (`EVENT_SYSTEM_FOREGROUND`, `WINEVENT_OUTOFCONTEXT`), `GetWindowThreadProcessId`, `QueryFullProcessImageNameW`, `GetApplicationUserModelId` |
+| Explorer | `IShellWindows`, `IServiceProvider`, `IShellBrowser`, `IFolderView2`, `IShellItemArray` |
+| Media | `Windows.Media.Control` (SMTC) |
+| Audio | `IMMDeviceEnumerator`, `IAudioSessionManager2`, `IAudioSessionControl2`, `ISimpleAudioVolume`, `IPolicyConfig` (cambio device) |
+| Sistema | PDH (`PdhOpenQuery`, contatori `Processor Information`, `Memory`, `GPU Engine`), `GetSystemPowerStatus` |
+| GPU vendor | NVML, AMD ADLX, Intel IGCL — tutte caricate a runtime |
+| Cattura e OCR | `Windows.Graphics.Capture`, `Windows.Media.Ocr` |
+| Drag & drop | `RegisterDragDrop`, `IDropTarget`, `IDataObject`, `SHCreateDataObject` |
+| Appunti | `AddClipboardFormatListener` |
+| IPC | `CreateNamedPipeW` con SDDL, JSON-RPC 2.0 |
+| Input | `SendInput`, `RegisterHotKey` |

@@ -1,0 +1,45 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 24, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "release",
+      "displayName": "Release (Ninja + MSVC portable)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "cl.exe",
+        "CMAKE_CXX_COMPILER": "cl.exe",
+        "CMAKE_RC_COMPILER": "rc.exe"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug (Ninja + MSVC portable)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "cl.exe",
+        "CMAKE_CXX_COMPILER": "cl.exe",
+        "CMAKE_RC_COMPILER": "rc.exe"
+      }
+    },
+    {
+      "name": "ci",
+      "displayName": "Release (Visual Studio, per i runner di GitHub)",
+      "description": "Non usa la toolchain portable di tools\\: senza generatore indicato CMake sceglie da solo il Visual Studio piu' recente presente sul runner, qualunque versione sia (l'immagine windows-latest cambia nel tempo). Serve solo alla CI.",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/ci",
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "release", "configurePreset": "release" },
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "ci", "configurePreset": "ci", "configuration": "Release" }
+  ]
+}
