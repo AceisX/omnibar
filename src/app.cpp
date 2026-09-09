@@ -29,12 +29,9 @@ constexpr UINT kFastTickMs = 8;
 constexpr UINT kOpenMs     = 260;
 constexpr UINT kCloseMs    = 200;
 constexpr UINT kAnimTickMs = 8;
-// Quanto aspetta prima di COMINCIARE a chiudersi, non quanto ci mette a
-// chiudersi: sono due tempi diversi e si sbagliano volentieri l'uno per
-// l'altro. Questo serve solo a non far sparire la barra se il cursore ne esce
-// per un attimo mentre punta un bottone sul bordo. Duecento millisecondi
-// bastano a coprire quello; oltre, si sente come una barra che non se ne va.
-constexpr UINT kUnhoverMs  = 200;
+// L'attesa prima che la barra COMINCI a chiudersi sta ora in `reveal.unhover_ms`.
+// Non e' il tempo della chiusura: sono due cose diverse e si sbagliano
+// volentieri l'una per l'altra.
 
 constexpr float kOutsideMarginDip = 6.f;
 
@@ -122,8 +119,30 @@ RECT Inflate(const RECT& r, int by) {
 
 // ── Ciclo di vita ────────────────────────────────────────────────────────────
 
+void App::LoadConfig() {
+    std::vector<toml::Error> problems;
+    const std::wstring path = paths::ConfigFile();
+    cfg_ = config::Load(path, problems);
+    config::Report(path, problems);
+
+    // Da qui le impostazioni si spargono nelle strutture che le usano. Sono
+    // poche righe noiose, e vanno tenute in un posto solo: sparse, la prossima
+    // impostazione verrebbe applicata in metà dei punti giusti.
+    placementCfg_.edge         = cfg_.edge;
+    placementCfg_.thicknessDip = cfg_.thicknessDip;
+    placementCfg_.lineDip      = cfg_.lineDip;
+    placementCfg_.nubThickDip  = cfg_.nubThickDip;
+    placementCfg_.nubLenDip    = cfg_.nubLenDip;
+    placementCfg_.triggerPx    = cfg_.triggerPx;
+
+    trigger_.SetConfig({cfg_.delayMs, cfg_.travelPx});
+
+    log::SetLevel(static_cast<log::Level>(cfg_.logLevel));
+}
+
 bool App::Init(HINSTANCE inst) {
     inst_ = inst;
+    LoadConfig();
 
     if (!shell::RegisterBarClass(inst, &App::WndProc)) return false;
 
@@ -147,12 +166,6 @@ bool App::Init(HINSTANCE inst) {
     BuildTree();
     ApplyEdge();
     RefreshPlacement(true);
-
-    // Soglie di apertura. Erano 180 ms di attesa piu' fino a 100 di polling:
-    // mezzo secondo prima che succedesse qualcosa. Adesso il richiamo della
-    // pastiglia da' un riscontro immediato, quindi la conferma puo' essere
-    // molto piu' breve senza diventare nervosa.
-    trigger_.SetConfig({90, 40});
 
     // Si parte a riposo, senza mai rubare il focus. La finestra si posiziona
     // una volta sola: da qui in poi non si muove piu'.
@@ -552,7 +565,10 @@ void App::OnCursorTick() {
         // muovono, e l'avatar sta dentro la barra, che e' chiusa. Prima la
         // barra inseguiva il cursore e ridisegnava di continuo — quel movimento
         // e' proprio cio' che stonava, e toglierlo ha tolto anche il costo.
-        if (trigger_.Update(PointIn(placement_.trigger, cursor), cursor, now)) Reveal();
+        // `on_hover = false` lascia solo la scorciatoia da tastiera: su un
+        // portatile col trackpad c'e' chi la preferisce cosi'.
+        if (cfg_.onHover &&
+            trigger_.Update(PointIn(placement_.trigger, cursor), cursor, now)) Reveal();
         return;
     }
 
@@ -582,7 +598,7 @@ void App::OnCursorTick() {
             outsideSince_ = 0;
         } else if (outsideSince_ == 0) {
             outsideSince_ = now;
-        } else if (now - outsideSince_ >= kUnhoverMs) {
+        } else if (now - outsideSince_ >= static_cast<ULONGLONG>(cfg_.unhoverMs)) {
             // Isteresi: uscire per un attimo mentre si punta un bottone non
             // deve chiudere la barra sotto il cursore.
             Hide();
@@ -669,10 +685,10 @@ void App::OnTrayMenu(POINT screenPt) {
     state.autostart = shell::AutostartEnabled();
 
     switch (shell::ShowTrayMenu(hwnd_, screenPt, state)) {
-        case IDM_EDGE_BOTTOM: placementCfg_.edge = Edge::Bottom; break;
-        case IDM_EDGE_TOP:    placementCfg_.edge = Edge::Top;    break;
-        case IDM_EDGE_LEFT:   placementCfg_.edge = Edge::Left;   break;
-        case IDM_EDGE_RIGHT:  placementCfg_.edge = Edge::Right;  break;
+        case IDM_EDGE_BOTTOM: placementCfg_.edge = cfg_.edge = Edge::Bottom; break;
+        case IDM_EDGE_TOP:    placementCfg_.edge = cfg_.edge = Edge::Top;    break;
+        case IDM_EDGE_LEFT:   placementCfg_.edge = cfg_.edge = Edge::Left;   break;
+        case IDM_EDGE_RIGHT:  placementCfg_.edge = cfg_.edge = Edge::Right;  break;
 
         case IDM_REVEAL:      Reveal(); return;
         case IDM_PIN:         TogglePin(); return;
@@ -908,9 +924,25 @@ ui::RectF App::ToDip(POINT clientPx) const {
 }
 
 void App::ApplyTheme() {
-    render::Theme t = render::AppsUseLightTheme() ? render::Theme::Light()
-                                                 : render::Theme::Dark();
-    t.ApplyAccent(render::ReadSystemAccent());
+    const bool chiaro = (cfg_.theme == config::ThemeMode::Light) ||
+                        (cfg_.theme == config::ThemeMode::Auto && render::AppsUseLightTheme());
+
+    render::Theme t = chiaro ? render::Theme::Light() : render::Theme::Dark();
+    t.opacity      = cfg_.opacity;
+    t.soften       = cfg_.soften;
+    t.cornerRadius = cfg_.cornerRadius;
+
+    render::SystemAccent a = render::ReadSystemAccent();
+    if (!cfg_.accentFromSystem) {
+        // Un accento scelto a mano non ha varianti chiare e scure: si ricavano,
+        // altrimenti sul fondo sbagliato sparirebbe.
+        const render::Color scelto{cfg_.accentR, cfg_.accentG, cfg_.accentB, 1.f};
+        a.base       = scelto;
+        a.light      = render::Mix(scelto, render::Color::Rgb(0xFFFFFF), 0.45f);
+        a.dark       = render::Mix(scelto, render::Color::Rgb(0x000000), 0.30f);
+        a.fromSystem = false;
+    }
+    t.ApplyAccent(a);
     t.ApplyOpacity();
     renderer_.SetTheme(t);
 }

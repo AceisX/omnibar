@@ -96,6 +96,13 @@ struct Theme {
     // comportano i pannelli di Windows.
     float opacity          = 0.85f;
 
+    // Quanto si smorza il colore dell'accento prima di usarlo. Il colore
+    // scelto dall'utente e' pensato per campiture grandi — la barra del titolo,
+    // il menu Start — e su superfici piccole come un toggle o una faccia da
+    // trenta punti arriva piu' forte del dovuto. Togliergliene un quinto lo
+    // riporta al peso giusto senza cambiargli tinta.
+    float soften           = 0.20f;
+
     // Il font del testo e quello delle icone: Segoe Fluent Icons c'e' su
     // Windows 11, Segoe MDL2 Assets e' il ripiego su Windows 10.
     const wchar_t* fontText = L"Segoe UI Variable Display";

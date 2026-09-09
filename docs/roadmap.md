@@ -24,7 +24,9 @@ non sono qualcosa da "sistemare alla fine".
       portable/`%APPDATA%`
 - [x] Il gate della CI sulla dimensione dell'eseguibile
 - [x] Ambiente di prova in Windows Sandbox (`tools\sandbox\`)
-- [ ] **`config`: parser TOML, schema, validazione con errori leggibili, hot-reload** ← in corso
+- [x] `config`: parser TOML scritto in casa, schema tipizzato, validazione con errori che
+      dicono file, riga e cosa ci si aspettava
+- [ ] `config`: hot-reload su `ReadDirectoryChangesW`
 - [ ] `core`: crash handler
 - [ ] Il gate della CI su RAM e tempo di avvio
 - [ ] Template di issue e PR

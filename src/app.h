@@ -10,6 +10,7 @@
 // PostMessage, come in MiniBar.
 #pragma once
 #include "action/bus.h"
+#include "config/config.h"
 #include "render/renderer.h"
 #include "shell/placement.h"
 #include "shell/trigger.h"
@@ -70,6 +71,10 @@ private:
     void BuildTree();
     void ApplyTheme();
 
+    // Rilegge il file e riporta le impostazioni dentro le strutture che le
+    // usano. Chiamata all'avvio e, dalla prossima fase, a ogni salvataggio.
+    void LoadConfig();
+
     // Il bordo detta due cose insieme: la direzione dell'albero e la modalita'
     // compatta. Stanno in una funzione sola perche' devono cambiare insieme.
     void  ApplyEdge();
@@ -84,6 +89,7 @@ private:
     render::Renderer renderer_;
     action::Bus      actions_;
 
+    config::Config         cfg_;
     shell::PlacementConfig placementCfg_;
     shell::Placement       placement_;
     shell::TriggerDetector trigger_;

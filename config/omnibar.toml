@@ -1,12 +1,17 @@
-# omnibar.toml — configurazione di esempio, con i default e il perché di ognuno.
+# omnibar.toml — configurazione, con i default e il perché di ognuno.
 #
-# Questo file è la copia di riferimento. Quello vero vive in
+# Questa è la copia di riferimento. Quella vera vive in
 # %APPDATA%\OmniBar\omnibar.toml, oppure accanto all'eseguibile se c'è
 # `portable.flag`.
 #
-# Si modifica a mano e si salva: l'hot-reload lo applica subito. Un file con un
-# errore NON viene applicato — resta in vigore l'ultimo valido, e l'errore
-# compare con file, riga e cosa ci si aspettava.
+# Si può modificare a mano — ed è pensato per restare leggibile — ma dalla
+# fase 6 ci sarà una finestra di configurazione, e chi non vuole aprire un file
+# di testo non dovrà farlo.
+#
+# Un valore sbagliato NON spegne la barra: viene segnalato nel log con la riga e
+# il motivo, e per quella impostazione vale il default. Il resto del file si
+# applica lo stesso. Anche una chiave scritta male viene segnalata, invece di
+# essere ignorata in silenzio.
 
 [bar]
 # Su quale bordo vive: right | left | bottom | top.
@@ -19,98 +24,68 @@ edge = "right"
 # per mostrare otto icone non è minimal, è solo grande.
 # In alternativa una percentuale dell'area di lavoro, es. extent = 60.
 extent     = "auto"
-max_extent = 85     # il tetto dell'auto: oltre, si va in overflow
-align      = "center"   # center | start | end
+max_extent = 85          # il tetto dell'auto: oltre, si va in overflow
 
-# Su quale monitor. "cursor" la porta dove sta il mouse, "primary" la inchioda,
-# oppure l'indice del monitor.
-monitor = "cursor"
-
-# Spessore in DIP: larghezza sui bordi laterali, altezza su quelli
-# orizzontali. Scala col DPI. Con 44 un bottone da 30 sta dentro con sei punti
-# di margine — meno di una riga di testo, che è il punto.
+# Spessore in DIP: larghezza sui bordi laterali, altezza su quelli orizzontali.
+# Scala col DPI. Con 44 un bottone da 30 sta dentro con sette punti di margine.
 thickness = 44
 
-# Angoli e opacità.
-corner_radius = 11
-opacity       = 0.85
+# Raggio degli angoli, sul lato rivolto verso lo schermo.
+corner_radius = 20
 
-# auto | dark | light. `auto` segue AppsUseLightTheme e cambia a caldo.
+# Quanto è velato il FONDO della barra — non tutta la finestra. La differenza
+# conta: velando l'intera finestra diventerebbero trasparenti anche le icone,
+# che perderebbero contrasto proprio dove serve.
+opacity = 0.85
+
+# auto | dark | light. `auto` segue il tema delle applicazioni di Windows e
+# cambia a caldo.
 theme = "auto"
 
 
-[colors]
-# Il colore d'accento — toggle accesi, anello di richiamo, sfera dell'avatar —
-# arriva dalla personalizzazione di Windows: è quello che hai scelto tu nelle
-# impostazioni, non una tavolozza inventata da noi. Una barra che vuole passare
-# per un componente di sistema non ha motivo di avere colori propri.
-#
-# "system" segue Windows e cambia a caldo quando cambi accento.
-# In alternativa un colore esplicito, es. accent = "#D1734A".
-accent = "system"
-
-# L'avatar prende le sue tinte dall'accento. Qui si possono forzare, se si
-# vuole un personaggio di un colore diverso dal resto dell'interfaccia.
-# avatar_top    = "#F6BE96"
-# avatar_bottom = "#D1734A"
-
-
 [reveal]
-# La linguetta: quanti pixel della barra restano visibili a riposo. Serve a
-# farsi trovare da chi non sa che la barra c'è. Con peek = false la finestra
-# esce del tutto dallo schermo e resta solo la zona sensibile.
-peek    = true
-peek_px = 5
+# La linea sempre visibile sul bordo, e la sporgenza al suo centro. Fra le due
+# c'è una spalla raccordata: è una figura sola, non una linea con un blocco
+# appoggiato sopra.
+line          = 2
+nub_thickness = 7
+nub_length    = 78
 
 # La zona sensibile sul bordo, in pixel fisici. Sotto i 2 px diventa difficile
 # da colpire su schermi ad alto DPI; sopra i 6 si attiva quando non vuoi.
-trigger_px = 4
+trigger_px = 6
 
-# Le due soglie che evitano i falsi positivi (architecture.md §8.1): il cursore
-# deve restare nella zona per `delay_ms` E aver percorso meno di `travel_px` in
-# quel tempo. Un cursore lanciato che rimbalza sul bordo ha velocità alta e
-# viene scartato.
-delay_ms  = 180
-travel_px = 24
+# Le due soglie che evitano i falsi positivi: il cursore deve restare nella zona
+# per `delay_ms` E aver percorso meno di `travel_px` in quel tempo. Un cursore
+# lanciato che rimbalza sul bordo ha velocità alta e viene scartato.
+delay_ms  = 90
+travel_px = 40
 
-# Isteresi in uscita: quanto aspetta prima di richiudersi quando esci.
-unhover_ms = 400
+# Quanto aspetta prima di COMINCIARE a chiudersi quando esci — non quanto ci
+# mette a chiudersi. Serve a non far sparire la barra se il cursore ne esce per
+# un attimo mentre punta un bottone sul bordo.
+unhover_ms = 200
 
 # false disattiva del tutto l'apertura al passaggio del mouse: resta solo
 # l'hotkey. Su un portatile col trackpad c'è chi la preferisce così.
 on_hover = true
 
 
-[hotkeys]
-# Apre la barra e ci mette il focus da tastiera. La barra è navigabile
-# interamente con frecce e Invio: al bordo dello schermo col trackpad si arriva
-# male, e questa non è una scorciatoia per esperti ma la via principale su
-# laptop.
-toggle     = "Win+Space"
-pin        = "Win+Shift+Space"
-# Cattura di regione e OCR (fase 3).
-capture    = "Win+Shift+S"
-ocr        = "Win+Shift+T"
+[colors]
+# Il colore d'accento — toggle accesi, anello di richiamo, l'agente — arriva
+# dalla personalizzazione di Windows: è quello che hai scelto tu nelle
+# impostazioni, non una tavolozza inventata da noi. Cambia a caldo quando lo
+# cambi.
+#
+# "system" segue Windows. In alternativa un colore esplicito, es. "#D1734A".
+accent = "system"
 
-
-[behavior]
-# In `Pinned` registra l'AppBar e riserva spazio: le finestre massimizzate si
-# fermano prima invece di finirci sotto.
-reserve_space_when_pinned = true
-
-# Nascondi tutto (anche la zona trigger) quando un'app va a schermo intero.
-suppress_on_fullscreen = true
-
-# Rispetta l'Assistente notifiche di Windows: in Non disturbare, niente
-# richieste di attenzione.
-respect_dnd = true
-
-# La barra non ruba MAI il focus. Non è configurabile, è nel manifesto
-# dell'architettura (§2.2). Sta qui solo per dire che non è una dimenticanza.
-
-
-[startup]
-autostart = false
+# Quanto si smorza quel colore prima di usarlo, da 0 a 1. Il colore scelto
+# dall'utente è pensato per campiture grandi — la barra del titolo, il menu
+# Start — e su superfici piccole come un toggle o una faccia da trenta punti
+# arriva più forte del dovuto. Si toglie croma, non luminosità: i blu restano
+# blu.
+soften = 0.20
 
 
 [log]
@@ -118,25 +93,26 @@ autostart = false
 level = "info"
 
 
-# ── Estensioni ───────────────────────────────────────────────────────────────
-# Un'estensione installata non è attiva finché non le si dice di sì. Qui si
-# elencano quelle abilitate e i permessi concessi; le impostazioni le scrivono
-# anche da sole quando concedi qualcosa dalla finestra di consenso.
+# ─────────────────────────────────────────────────────────────────────────────
+# Da qui in giù: non ancora implementato. Le sezioni sconosciute vengono
+# ignorate senza avvisi, così questo file può descrivere anche dove si sta
+# andando senza riempire il log a ogni avvio.
+# ─────────────────────────────────────────────────────────────────────────────
 
-[extensions]
-enabled = ["com.omnibar.excel", "com.omnibar.explorer"]
+# [hotkeys]
+# La barra è navigabile interamente con frecce e Invio: al bordo dello schermo
+# col trackpad si arriva male, e questa non è una scorciatoia per esperti ma la
+# via principale su laptop.
+# toggle = "Win+Space"
+# pin    = "Win+Shift+Space"
 
-[extensions."com.omnibar.excel"]
-granted = ["input"]
+# [zones]
+# Cosa sta sempre nella barra e cosa cambia col programma in primo piano. La
+# distinzione è del progetto, ma quali widget stiano di qua o di là lo decide
+# l'utente: un widget non è fisso o contestuale per natura, lo è per scelta.
+# pinned = ["media", "volume", "agent"]
 
-[extensions."com.omnibar.explorer"]
-granted = ["input", "open"]
-
-
-# ── Zone ─────────────────────────────────────────────────────────────────────
-# Chi occupa cosa. `context` la riempie il profilo attivo, quindi non si elenca
-# qui: cambia da sola.
-
-[zones]
-pinned   = ["media", "volume", "sysmon.cpu", "sysmon.ram"]
-handle   = ["pin", "settings"]
+# [[profile]]
+# Un profilo per applicazione: i widget che compaiono quando quel programma è in
+# primo piano. Il tier dichiarativo non richiede di scrivere codice.
+# match = { process = "EXCEL.EXE" }

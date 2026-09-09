@@ -19,6 +19,8 @@ add_executable(omnibar WIN32
     src/core/common.cpp
     src/core/log.cpp
     src/core/paths.cpp
+    src/config/toml.cpp
+    src/config/config.cpp
     src/ui/widget.cpp
     src/ui/layout.cpp
     src/render/theme.cpp
