@@ -181,6 +181,7 @@ bool App::Init(HINSTANCE inst) {
     SetCursorTick(kSlowTickMs);
     ScheduleBlink();
 
+    shell::LogMonitors(placement_.monitor);
     log::Debug(L"placement: finestra " + std::to_wstring(placement_.rect.left) + L"," +
                std::to_wstring(placement_.rect.top) + L" " +
                std::to_wstring(placement_.sizePx.cx) + L"x" +
@@ -860,6 +861,12 @@ void App::RefreshPlacement(bool force) {
         // Cambiare schermo puo' voler dire cambiare DPI, e quindi rifare tutto
         // il disegno: la superficie e' nuova e non contiene niente.
         Redraw();
+
+        log::Info(L"schermo o geometria cambiati: " + std::to_wstring(placement_.sizePx.cx) +
+                  L"x" + std::to_wstring(placement_.sizePx.cy) + L" a " +
+                  std::to_wstring(placement_.rect.left) + L"," +
+                  std::to_wstring(placement_.rect.top) + L", DPI " +
+                  std::to_wstring(placement_.dpi));
     }
 }
 

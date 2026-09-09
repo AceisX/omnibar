@@ -1,5 +1,7 @@
 #include "shell/placement.h"
 
+#include "core/log.h"
+
 #include <shellscalingapi.h>
 
 #include <algorithm>
@@ -28,6 +30,49 @@ HMONITOR MonitorUnderCursor() {
 HMONITOR PrimaryMonitor() {
     const POINT origin{0, 0};
     return MonitorFromPoint(origin, MONITOR_DEFAULTTOPRIMARY);
+}
+
+namespace {
+
+struct Elenco {
+    HMONITOR              scelto;
+    std::vector<std::wstring> righe;
+};
+
+BOOL CALLBACK RaccogliMonitor(HMONITOR h, HDC, LPRECT, LPARAM param) {
+    auto* e = reinterpret_cast<Elenco*>(param);
+
+    MONITORINFOEXW mi{};
+    mi.cbSize = sizeof(mi);
+    if (!GetMonitorInfoW(h, &mi)) return TRUE;
+
+    const RECT& m = mi.rcMonitor;
+    const RECT& w = mi.rcWork;
+
+    std::wstring riga = std::wstring(mi.szDevice) + L"  schermo " +
+                        std::to_wstring(m.right - m.left) + L"x" +
+                        std::to_wstring(m.bottom - m.top) + L" a " +
+                        std::to_wstring(m.left) + L"," + std::to_wstring(m.top) +
+                        L"  lavoro " + std::to_wstring(w.right - w.left) + L"x" +
+                        std::to_wstring(w.bottom - w.top) +
+                        L"  DPI " + std::to_wstring(DpiFor(h));
+    if (mi.dwFlags & MONITORINFOF_PRIMARY) riga += L"  [primario]";
+    if (h == e->scelto)                    riga += L"  <-- la barra sta qui";
+
+    e->righe.push_back(std::move(riga));
+    return TRUE;
+}
+
+}  // namespace
+
+void LogMonitors(HMONITOR chosen) {
+    if (!log::Enabled(log::Level::Debug)) return;
+
+    Elenco e{chosen, {}};
+    EnumDisplayMonitors(nullptr, nullptr, RaccogliMonitor, reinterpret_cast<LPARAM>(&e));
+
+    log::Debug(L"schermi visti da Windows: " + std::to_wstring(e.righe.size()));
+    for (const std::wstring& r : e.righe) log::Debug(L"  " + r);
 }
 
 Placement Compute(const PlacementConfig& cfg, HMONITOR monitor) {

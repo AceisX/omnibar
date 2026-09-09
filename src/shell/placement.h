@@ -64,6 +64,12 @@ struct Placement {
 HMONITOR MonitorUnderCursor();
 HMONITOR PrimaryMonitor();
 
+// Scrive nel log tutti gli schermi che Windows presenta, con area di lavoro e
+// DPI, e segna quello scelto. Su una macchina con piu' monitor e' la prima cosa
+// da guardare quando la barra compare dove non dovrebbe: dice se il problema e'
+// nella nostra scelta o in cosa Windows sta riportando.
+void LogMonitors(HMONITOR chosen);
+
 // Calcola tutto per un monitor. Se il monitor non e' valido torna un Placement
 // non valido: il chiamante non deve indovinare.
 Placement Compute(const PlacementConfig& cfg, HMONITOR monitor);
