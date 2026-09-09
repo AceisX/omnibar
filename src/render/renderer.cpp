@@ -759,7 +759,6 @@ void Renderer::Draw(const ui::Widget& root, const DrawState& state) {
 
     const bool  vertical = (state.edge == Edge::Left || state.edge == Edge::Right);
     const float full     = vertical ? h : w;
-    const float center   = full * 0.5f;
 
     const float t = std::clamp(state.openT, 0.f, 1.f);
 
@@ -771,6 +770,12 @@ void Renderer::Draw(const ui::Widget& root, const DrawState& state) {
                                  : full;
     const float thickness  = state.nubThickDip + (state.barThickDip - state.nubThickDip) * t;
     const float alongLen   = state.nubLenDip + (contentLen - state.nubLenDip) * t;
+
+    // Il centro del pannello, ritagliato perche' non esca dai bordi dello
+    // schermo: chiedere l'allineamento in cima non deve poter far finire meta'
+    // barra fuori.
+    const float half   = alongLen * 0.5f;
+    const float center = std::clamp(state.panelCenter * full, half, full - half);
 
     FillProfile(state, center, alongLen, thickness, state.lineDip);
 

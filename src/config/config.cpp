@@ -160,6 +160,13 @@ Config Load(const std::wstring& path, std::vector<toml::Error>& problems) {
         c.extentPct = Number(extent, "bar.extent", 0.f, 10.f, 100.f, problems);
     }
 
+    c.align = Choice(bar["align"], "bar.align", 1, {L"start", L"center", L"end"}, problems) - 1;
+
+    // "cursor" o "primary". Con un monitor solo non cambia niente; con due,
+    // cambia dove ti compare la barra.
+    c.monitorFollowsCursor =
+        Choice(bar["monitor"], "bar.monitor", 0, {L"cursor", L"primary"}, problems) == 0;
+
     c.maxExtentPct = Number(bar["max_extent"], "bar.max_extent", c.maxExtentPct, 20.f, 100.f, problems);
     c.thicknessDip = Number(bar["thickness"], "bar.thickness", c.thicknessDip, 24.f, 120.f, problems);
     c.cornerRadius = Number(bar["corner_radius"], "bar.corner_radius", c.cornerRadius, 0.f, 60.f, problems);

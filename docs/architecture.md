@@ -480,6 +480,13 @@ Tre problemi che decidono se la barra è piacevole o insopportabile dopo due gio
 - **Conflitti con Windows.** La zona trigger non deve coprire l'area della taskbar (nemmeno se
   in auto-hide), gli hot corner, né il bordo dove Windows apre gli snap layout. Le esclusioni si
   ricalcolano a ogni `ABN_POSCHANGED` e a ogni cambio di risoluzione: mai memorizzate.
+- **Il bordo occupato dalla taskbar è un problema diverso, non una taratura.** Su un bordo
+  libero la zona sensibile può essere di pochi pixel: il cursore ci sbatte contro e si ferma da
+  solo, perché oltre non c'è schermo — è il trucco su cui si reggono tutti i bersagli sui bordi.
+  Con la taskbar davanti quel trucco sparisce: il bordo della zona sta in mezzo allo schermo, e
+  per colpirlo bisogna **fermarsi** nel punto giusto invece di lanciare il mouse. Sei pixel
+  diventano impossibili. Quando il nostro bordo è occupato — si vede confrontando il rettangolo
+  del monitor con l'area di lavoro — la zona si allarga a venti punti.
 - **Il laptop.** Al bordo dello schermo col trackpad ci si arriva male. Serve una scorciatoia
   globale che apra la barra e ci metta il focus da tastiera, e la barra deve essere navigabile
   interamente con le frecce e Invio, senza mai toccare il mouse.
@@ -909,6 +916,12 @@ regolarità, e la regolarità è la cosa che fa capire che dietro c'è un timer.
 
 Chiude l'occhio schiacciandolo, non facendolo sparire: un occhio che svanisce si legge come un
 errore di disegno, uno che si appiattisce si legge come una palpebra.
+
+**L'evidenziazione va spenta a mano quando il cursore se ne va.** Una finestra riceve
+`WM_MOUSEMOVE` finché il cursore ci sta sopra, e quando esce non riceve più niente: l'ultimo
+widget illuminato resterebbe illuminato per sempre. Il controllo sta nel polling del cursore, e
+sta **in cima**, prima di qualunque ramo che possa uscire — la prima versione stava sotto il
+ramo della barra chiusa e funzionava solo nel caso in cui era stata scritta.
 
 **Lo sguardo si divide fra la testa e gli occhi.** Muovere solo le pupille dentro una faccia
 immobile è il modo più rapido per ottenere qualcosa che sembra un quadro che ti segue con lo

@@ -46,7 +46,29 @@ Placement Compute(const PlacementConfig& cfg, HMONITOR monitor) {
     if (workW <= 0 || workH <= 0) return p;
 
     const int thickness = Dip(cfg.thicknessDip, p.dpi);
-    const int trigger   = std::max(1, cfg.triggerPx);
+
+    // Quanto e' occupato il NOSTRO bordo da qualcos'altro — quasi sempre la
+    // taskbar, ma vale per qualunque barra agganciata.
+    const RECT screen = mi.rcMonitor;
+    int occupato = 0;
+    switch (cfg.edge) {
+        case Edge::Bottom: occupato = screen.bottom - p.work.bottom; break;
+        case Edge::Top:    occupato = p.work.top - screen.top;       break;
+        case Edge::Left:   occupato = p.work.left - screen.left;     break;
+        case Edge::Right:  occupato = screen.right - p.work.right;   break;
+    }
+
+    // Se quel bordo e' libero, la zona sensibile puo' essere sottilissima: il
+    // cursore ci sbatte contro e si ferma da solo, perche' oltre non c'e'
+    // schermo. E' il trucco su cui si reggono tutti i bersagli sui bordi.
+    //
+    // Se invece c'e' la taskbar, quel trucco non c'e' piu': il bordo della
+    // nostra zona sta in mezzo allo schermo, e per colpirlo bisogna FERMARSI
+    // nel punto giusto invece di lanciare il mouse. Sei pixel diventano
+    // impossibili. Con la taskbar davanti la zona si allarga: non e' una
+    // taratura, e' un problema diverso.
+    int trigger = std::max(1, cfg.triggerPx);
+    if (occupato > 0) trigger = std::max(trigger, Dip(20.f, p.dpi));
 
     p.horizontal  = (cfg.edge == Edge::Bottom || cfg.edge == Edge::Top);
     p.thicknessPx = thickness;

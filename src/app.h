@@ -138,6 +138,7 @@ private:
     float cursorAlong_ = -1.f;  // cursore lungo la barra, in DIP; < 0 = non sopra
     float magnify_     = 0.f;
     float contentLen_  = 0.f;   // lunghezza della barra aperta, in DIP
+    float panelCenter_ = 0.5f;  // dove sta lungo il bordo, 0-1
 
     UINT      cursorTickMs_ = 0;
     ULONGLONG outsideSince_ = 0;  // da quando il cursore e' fuori dalla barra

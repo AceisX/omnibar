@@ -134,6 +134,9 @@ void App::LoadConfig() {
     placementCfg_.nubThickDip  = cfg_.nubThickDip;
     placementCfg_.nubLenDip    = cfg_.nubLenDip;
     placementCfg_.triggerPx    = cfg_.triggerPx;
+    placementCfg_.extentPct    = cfg_.extentPct;
+    placementCfg_.maxExtentPct = cfg_.maxExtentPct;
+    placementCfg_.align        = cfg_.align;
 
     trigger_.SetConfig({cfg_.delayMs, cfg_.travelPx});
 
@@ -182,7 +185,11 @@ bool App::Init(HINSTANCE inst) {
                std::to_wstring(placement_.rect.top) + L" " +
                std::to_wstring(placement_.sizePx.cx) + L"x" +
                std::to_wstring(placement_.sizePx.cy) + L"  contenuto " +
-               std::to_wstring(static_cast<int>(contentLen_)) + L" DIP");
+               std::to_wstring(static_cast<int>(contentLen_)) + L" DIP" +
+               L"  zona sensibile " + std::to_wstring(placement_.trigger.left) + L"," +
+               std::to_wstring(placement_.trigger.top) + L".." +
+               std::to_wstring(placement_.trigger.right) + L"," +
+               std::to_wstring(placement_.trigger.bottom));
     log::Info(std::wstring(L"Barra pronta — bordo a ") + EdgeName(placementCfg_.edge) +
               L", " + std::to_wstring(placement_.sizePx.cx) + L"x" +
               std::to_wstring(placement_.sizePx.cy) + L" px, a riposo");
@@ -541,6 +548,28 @@ void App::OnCursorTick() {
     if (!GetCursorPos(&cursor)) return;
     const ULONGLONG now = GetTickCount64();
 
+    // L'evidenziazione sotto il cursore va spenta quando il cursore se ne va,
+    // e va fatto PRIMA di qualunque ramo che possa uscire.
+    //
+    // Sembra ovvio, ma non succede da solo: una finestra riceve WM_MOUSEMOVE
+    // finche' il cursore ci sta sopra, e quando esce non riceve piu' niente —
+    // quindi l'ultimo widget illuminato resta illuminato per sempre. Da barra
+    // fissata era evidente, perche' la barra non si chiudeva a portarselo via.
+    //
+    // La prima versione di questa correzione stava sotto il ramo della barra
+    // chiusa, che esce prima: funzionava nel caso segnalato e non in tutti gli
+    // altri. Qui in cima vale sempre, qualunque sia lo stato.
+    if (!hoveredId_.empty() || !pressedId_.empty()) {
+        RECT win{};
+        GetWindowRect(hwnd_, &win);
+        if (!PointIn(win, cursor)) {
+            log::Debug(L"evidenziazione spenta: il cursore ha lasciato la barra");
+            hoveredId_.clear();
+            pressedId_.clear();
+            Redraw();
+        }
+    }
+
     // Lo sguardo si aggiorna sempre, anche a barra chiusa: l'avatar si vede
     // comunque. Qui si fissa solo la meta'; a raggiungerla ci pensa il timer
     // dell'avatar, che si accende da solo se serve.
@@ -584,14 +613,18 @@ void App::OnCursorTick() {
         // cursore e' dentro: conta se e' dentro il PANNELLO, che occupa solo la
         // parte centrale. Altrimenti la barra resterebbe aperta per sempre.
         RECT panel = bar;
-        const int lenPx = static_cast<int>(contentLen_ *
-                                           static_cast<float>(placement_.dpi) / 96.f);
+        const float scale = static_cast<float>(placement_.dpi) / 96.f;
+        const int   lenPx = static_cast<int>(contentLen_ * scale);
+        const int   fullPx = placement_.horizontal ? (bar.right - bar.left)
+                                                   : (bar.bottom - bar.top);
+        const int   startPx = static_cast<int>(
+            std::clamp(panelCenter_ * static_cast<float>(fullPx),
+                       static_cast<float>(lenPx) * 0.5f,
+                       static_cast<float>(fullPx - lenPx / 2))) - lenPx / 2;
         if (placement_.horizontal) {
-            const int c = (bar.left + bar.right) / 2;
-            panel.left = c - lenPx / 2;  panel.right = c + lenPx / 2;
+            panel.left = bar.left + startPx;  panel.right = panel.left + lenPx;
         } else {
-            const int c = (bar.top + bar.bottom) / 2;
-            panel.top = c - lenPx / 2;   panel.bottom = c + lenPx / 2;
+            panel.top = bar.top + startPx;    panel.bottom = panel.top + lenPx;
         }
 
         if (PointIn(Inflate(panel, margin), cursor)) {
@@ -793,9 +826,15 @@ float App::ContentExtentDip() const {
 }
 
 void App::RefreshPlacement(bool force) {
-    HMONITOR monitor = (state_ == BarState::Hidden || force)
-                           ? shell::MonitorUnderCursor()
-                           : placement_.monitor;
+    // Su quale schermo. A barra chiusa segue il cursore, cosi' si apre sullo
+    // schermo che stai guardando; a barra aperta resta dov'e', perche' una
+    // barra che salta su un altro monitor mentre la stai usando e' peggio di
+    // una barra sullo schermo sbagliato.
+    HMONITOR monitor = placement_.monitor;
+    if (state_ == BarState::Hidden || force) {
+        monitor = cfg_.monitorFollowsCursor ? shell::MonitorUnderCursor()
+                                            : shell::PrimaryMonitor();
+    }
     if (!monitor) monitor = shell::PrimaryMonitor();
 
     if (!force && placement_.valid() && placement_.monitor == monitor) return;
@@ -817,6 +856,10 @@ void App::RefreshPlacement(bool force) {
                          static_cast<UINT>(placement_.sizePx.cy), placement_.dpi);
         Relayout();
         ApplyPlacement();
+
+        // Cambiare schermo puo' voler dire cambiare DPI, e quindi rifare tutto
+        // il disegno: la superficie e' nuova e non contiene niente.
+        Redraw();
     }
 }
 
@@ -829,21 +872,32 @@ void App::Relayout() {
 
     const ui::Metrics m = renderer_.Metrics();
 
-    // La barra aperta e' lunga quanto il suo contenuto, e sta al centro del
-    // bordo. La finestra invece copre tutto il bordo: il contenuto va disposto
-    // nel tratto centrale, non su tutta la superficie.
-    contentLen_ = std::min(ContentExtentDip(), Vertical() ? h : w);
+    // Quanto e' lungo il pannello: quanto il contenuto, oppure la percentuale
+    // chiesta nella configurazione.
+    const float full = Vertical() ? h : w;
+    contentLen_ = (cfg_.extentPct > 0.f)
+                      ? full * cfg_.extentPct / 100.f
+                      : std::min(ContentExtentDip(), full * cfg_.maxExtentPct / 100.f);
+    contentLen_ = std::min(contentLen_, full);
+
+    // Dove sta lungo il bordo. Il ritaglio lo fa il renderer, che e' l'unico a
+    // sapere quanto e' lungo davvero dopo l'animazione.
+    panelCenter_ = (cfg_.align < 0) ? 0.f : (cfg_.align > 0 ? 1.f : 0.5f);
 
     const float padX = Vertical() ? m.padCross : m.padAlong;
     const float padY = Vertical() ? m.padAlong : m.padCross;
 
+    // Il contenuto sta dentro il pannello, quindi segue lo stesso ritaglio.
+    const float half  = contentLen_ * 0.5f;
+    const float start = std::clamp(panelCenter_ * full, half, full - half) - half;
+
     ui::RectF bounds;
     if (Vertical()) {
-        bounds = ui::RectF{padX, (h - contentLen_) * 0.5f + padY,
+        bounds = ui::RectF{padX, start + padY,
                            std::max(0.f, w - padX * 2.f),
                            std::max(0.f, contentLen_ - padY * 2.f)};
     } else {
-        bounds = ui::RectF{(w - contentLen_) * 0.5f + padX, padY,
+        bounds = ui::RectF{start + padX, padY,
                            std::max(0.f, contentLen_ - padX * 2.f),
                            std::max(0.f, h - padY * 2.f)};
     }
@@ -871,6 +925,7 @@ void App::Redraw() {
     state.nubLenDip     = placementCfg_.nubLenDip;
     state.barThickDip   = static_cast<float>(placement_.thicknessPx) / scale;
     state.contentLenDip = contentLen_;
+    state.panelCenter   = panelCenter_;
 
     // Le icone compaiono quando c'e' spazio per contenerle, non prima: dentro
     // la sporgenza sarebbero un ammasso.

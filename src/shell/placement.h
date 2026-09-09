@@ -28,6 +28,13 @@ struct PlacementConfig {
     // finestra: a riposo il resto della superficie e' trasparente.
     float thicknessDip = 44.f;
 
+    // Lunghezza del pannello aperto: 0 = quanto il contenuto, altrimenti una
+    // percentuale dell'area di lavoro. La finestra copre comunque tutto il
+    // bordo: questo dice quanto ne occupa la parte disegnata.
+    float extentPct    = 0.f;
+    float maxExtentPct = 85.f;
+    int   align        = 0;      // -1 inizio, 0 centro, +1 fine
+
     // La linea sempre visibile sul bordo, e la sporgenza al suo centro.
     float lineDip      = 2.f;    // spessore della linea
     float nubThickDip  = 7.f;    // quanto sporge la sporgenza verso il centro

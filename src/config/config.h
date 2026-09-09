@@ -31,6 +31,12 @@ struct Config {
     float cornerRadius  = 20.f;
     float opacity       = 0.85f;
     ThemeMode theme     = ThemeMode::Auto;
+    int   align         = 0;       // -1 inizio, 0 centro, +1 fine
+
+    // Su quale schermo appare. Seguire il cursore e' il default perche' su piu'
+    // monitor la barra serve dove stai guardando, non dove sta il monitor
+    // principale.
+    bool  monitorFollowsCursor = true;
 
     // ── [reveal] ──
     int  delayMs    = 90;

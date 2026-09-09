@@ -54,6 +54,10 @@ struct DrawState {
     float barThickDip   = 44.f;   // il pannello da aperto
     float contentLenDip = 0.f;    // 0 = tutta la lunghezza della superficie
 
+    // Dove sta il pannello lungo il bordo, 0-1. Centrato di default; serve a
+    // chi vuole la barra in alto o in basso invece che a meta'.
+    float panelCenter   = 0.5f;
+
     float contentAlpha  = 1.f;
 
     // Posizione del cursore lungo la barra, in DIP sulla superficie; < 0 se non
