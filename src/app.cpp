@@ -246,6 +246,13 @@ LRESULT App::Handle(UINT msg, WPARAM wp, LPARAM lp) {
             Redraw();
             return 0;
 
+        case WM_DWMCOLORIZATIONCOLORCHANGED:
+            // L'utente ha cambiato il colore d'accento: e' un evento a se',
+            // non arriva con WM_SETTINGCHANGE.
+            ApplyTheme();
+            Redraw();
+            return 0;
+
         case WM_SETTINGCHANGE:
             ApplyTheme();
             RefreshPlacement(true);  // l'area di lavoro cambia con la taskbar
@@ -845,8 +852,10 @@ ui::RectF App::ToDip(POINT clientPx) const {
 }
 
 void App::ApplyTheme() {
-    renderer_.SetTheme(render::AppsUseLightTheme() ? render::Theme::Light()
-                                                  : render::Theme::Dark());
+    render::Theme t = render::AppsUseLightTheme() ? render::Theme::Light()
+                                                 : render::Theme::Dark();
+    t.ApplyAccent(render::ReadSystemAccent());
+    renderer_.SetTheme(t);
 }
 
 // ── L'albero ─────────────────────────────────────────────────────────────────

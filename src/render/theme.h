@@ -24,6 +24,29 @@ struct Color {
     constexpr Color withAlpha(float alpha) const { return Color{r, g, b, alpha}; }
 };
 
+// Miscela lineare fra due colori, 0 = a, 1 = b.
+constexpr Color Mix(const Color& a, const Color& b, float t) {
+    return Color{a.r + (b.r - a.r) * t,
+                 a.g + (b.g - a.g) * t,
+                 a.b + (b.b - a.b) * t,
+                 a.a + (b.a - a.a) * t};
+}
+
+// Il colore d'accento scelto dall'utente nelle impostazioni di Windows, con le
+// sue varianti chiare e scure. Non e' una preferenza nostra: e' la sua, e una
+// barra che vuole passare per un componente di sistema non ha motivo di
+// inventarsi una tavolozza propria.
+//
+// Se il sistema non risponde si torna ai valori di ripiego, che sono l'accento
+// predefinito di Windows 11.
+struct SystemAccent {
+    Color base;
+    Color light;   // due gradini verso il chiaro
+    Color dark;    // un gradino verso lo scuro
+    bool  fromSystem = false;
+};
+SystemAccent ReadSystemAccent();
+
 struct Theme {
     bool dark = true;
 
@@ -67,6 +90,10 @@ struct Theme {
 
     static Theme Dark();
     static Theme Light();
+
+    // Applica l'accento di sistema al tema: colora l'accento della barra e la
+    // sfera dell'avatar. Chiamata a ogni cambio di tema o di colorazione.
+    void ApplyAccent(const SystemAccent& accent);
 
     // Le metriche di layout che discendono dal tema. Il layout non deve
     // conoscere il tema: riceve solo questi numeri.

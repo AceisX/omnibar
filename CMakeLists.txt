@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.24)
+﻿cmake_minimum_required(VERSION 3.24)
 project(OmniBar VERSION 0.1.0 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -50,7 +50,7 @@ target_link_options(omnibar PRIVATE
 # Tutto dal Windows SDK: nessuna dipendenza esterna per l'host (§ tabella §4).
 target_link_libraries(omnibar PRIVATE
     d2d1 dwrite windowscodecs
-    user32 shell32 shlwapi ole32 advapi32 shcore winmm
+    user32 shell32 shlwapi ole32 advapi32 shcore winmm windowsapp
 )
 
 set_target_properties(omnibar PROPERTIES

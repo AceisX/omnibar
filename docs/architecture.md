@@ -761,6 +761,22 @@ due pixel. Restano tre cose, e bastano a leggere una faccia:
 È anche l'unico punto di colore della barra, ed è voluto: fra icone tutte monocrome, una faccia
 colorata si legge come qualcuno invece che come l'ennesimo comando.
 
+**Il colore non lo scegliamo noi.** Viene dall'accento che l'utente ha impostato in Windows,
+letto da `UISettings` insieme alle sue varianti chiara e scura, e cambia a caldo quando lui lo
+cambia. Vale per tutto: toggle accesi, anello di richiamo, sfera dell'avatar. Una barra che
+vuole passare per un componente di sistema non ha motivo di inventarsi una tavolozza propria —
+e un colore scelto da noi sarebbe *sbagliato* per chiunque abbia gusti diversi dai nostri.
+
+Due dettagli che discendono da lì:
+
+- Sul fondo scuro si usa la variante chiara dell'accento, sul fondo chiaro quella scura.
+  Prendere sempre la stessa vorrebbe dire che metà degli utenti non vede il proprio colore.
+- **L'occhio non è nero**: è l'accento portato quasi a fondo. Un nero puro su una sfera
+  colorata sembra un buco; una tinta scura dello stesso colore sembra parte della faccia.
+
+Resta sovrascrivibile dalla configurazione, per chi vuole un personaggio di un colore diverso
+dal resto dell'interfaccia.
+
 #### Cosa fa, e quanto costa
 
 **Guarda il cursore e sbatte le ciglia.**

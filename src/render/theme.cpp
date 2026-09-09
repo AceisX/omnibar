@@ -1,5 +1,9 @@
 #include "render/theme.h"
 
+#include <winrt/Windows.UI.ViewManagement.h>
+
+#include <algorithm>
+
 namespace omni::render {
 
 Theme Theme::Dark() {
@@ -15,10 +19,6 @@ Theme Theme::Dark() {
     t.accent       = Color::Rgb(0x4CC2FF);
     t.accentText   = Color::Rgb(0x0A0A0A);
     t.separator    = Color::Rgb(0xFFFFFF, 0.12f);
-    t.avatarTop    = Color::Rgb(0xF6BE96);
-    t.avatarBottom = Color::Rgb(0xD1734A);
-    t.avatarEye    = Color::Rgb(0x2A1A12);
-    t.avatarGlint  = Color::Rgb(0xFFFFFF, 0.85f);
     return t;
 }
 
@@ -35,10 +35,6 @@ Theme Theme::Light() {
     t.accent       = Color::Rgb(0x005FB8);
     t.accentText   = Color::Rgb(0xFFFFFF);
     t.separator    = Color::Rgb(0x000000, 0.13f);
-    t.avatarTop    = Color::Rgb(0xF6BE96);
-    t.avatarBottom = Color::Rgb(0xD1734A);
-    t.avatarEye    = Color::Rgb(0x2A1A12);
-    t.avatarGlint  = Color::Rgb(0xFFFFFF, 0.85f);
     return t;
 }
 
@@ -60,6 +56,63 @@ ui::Metrics Theme::metrics() const {
     m.separatorLen = 1.f;
     m.separatorPad = 4.f;
     return m;  // measureText la riempie il renderer, che sa misurare
+}
+
+namespace {
+
+Color FromWinRT(const winrt::Windows::UI::Color& c) {
+    return Color{static_cast<float>(c.R) / 255.f,
+                 static_cast<float>(c.G) / 255.f,
+                 static_cast<float>(c.B) / 255.f,
+                 1.f};
+}
+
+}  // namespace
+
+SystemAccent ReadSystemAccent() {
+    using namespace winrt::Windows::UI::ViewManagement;
+
+    // Ripiego: l'accento predefinito di Windows 11. Serve se il sistema non
+    // risponde — e serve anche perche' una barra senza colore d'accento
+    // sarebbe una barra senza stato acceso.
+    SystemAccent a;
+    a.base  = Color::Rgb(0x0078D4);
+    a.light = Color::Rgb(0x99EBFF);
+    a.dark  = Color::Rgb(0x005A9E);
+
+    try {
+        UISettings ui;
+        a.base  = FromWinRT(ui.GetColorValue(UIColorType::Accent));
+        a.light = FromWinRT(ui.GetColorValue(UIColorType::AccentLight2));
+        a.dark  = FromWinRT(ui.GetColorValue(UIColorType::AccentDark1));
+        a.fromSystem = true;
+    } catch (...) {
+        // UISettings puo' fallire su installazioni ridotte o se l'apartment
+        // non e' quello che si aspetta. Non e' un errore da segnalare: si usa
+        // il ripiego e la barra funziona uguale.
+    }
+    return a;
+}
+
+void Theme::ApplyAccent(const SystemAccent& a) {
+    // L'accento della barra: sul fondo scuro serve la variante chiara, sul
+    // fondo chiaro quella scura. Prendere sempre la stessa vorrebbe dire che
+    // meta' degli utenti non vede il proprio colore.
+    accent     = dark ? a.light : a.dark;
+    accentText = dark ? Color::Rgb(0x0A0A0A) : Color::Rgb(0xFFFFFF);
+
+    // La sfera dell'avatar: dalla variante chiara alla base, cosi' la
+    // sfumatura ha volume e resta riconoscibile come "il colore dell'utente".
+    // Su tema scuro si parte piu' chiari, perche' li' la sfera deve staccarsi
+    // dal fondo invece di fondersi.
+    avatarTop    = dark ? Mix(a.light, Color::Rgb(0xFFFFFF), 0.25f) : a.light;
+    avatarBottom = dark ? a.base : Mix(a.base, a.dark, 0.45f);
+
+    // L'occhio non e' nero: e' l'accento portato quasi a fondo. Un nero puro su
+    // una sfera colorata sembra un buco, una tinta scura dello stesso colore
+    // sembra parte della faccia.
+    avatarEye   = Mix(Mix(a.base, a.dark, 0.7f), Color::Rgb(0x000000), 0.72f);
+    avatarGlint = Color::Rgb(0xFFFFFF, 0.88f);
 }
 
 bool AppsUseLightTheme() {

@@ -39,6 +39,22 @@ opacity       = 0.96
 theme = "auto"
 
 
+[colors]
+# Il colore d'accento — toggle accesi, anello di richiamo, sfera dell'avatar —
+# arriva dalla personalizzazione di Windows: è quello che hai scelto tu nelle
+# impostazioni, non una tavolozza inventata da noi. Una barra che vuole passare
+# per un componente di sistema non ha motivo di avere colori propri.
+#
+# "system" segue Windows e cambia a caldo quando cambi accento.
+# In alternativa un colore esplicito, es. accent = "#D1734A".
+accent = "system"
+
+# L'avatar prende le sue tinte dall'accento. Qui si possono forzare, se si
+# vuole un personaggio di un colore diverso dal resto dell'interfaccia.
+# avatar_top    = "#F6BE96"
+# avatar_bottom = "#D1734A"
+
+
 [reveal]
 # La linguetta: quanti pixel della barra restano visibili a riposo. Serve a
 # farsi trovare da chi non sa che la barra c'è. Con peek = false la finestra
