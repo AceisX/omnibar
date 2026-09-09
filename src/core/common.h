@@ -62,6 +62,7 @@ enum : UINT_PTR {
     IDT_UNHOVER = 3, // isteresi di chiusura (one-shot)
     IDT_AVATAR  = 4, // sguardo e battito di ciglia: acceso solo mentre si muove
     IDT_BLINK   = 5, // prossimo battito di ciglia (one-shot, intervallo casuale)
+    IDT_RELOAD  = 6, // attesa prima di rileggere la configurazione (one-shot)
 };
 
 // Il bordo su cui vive la barra.

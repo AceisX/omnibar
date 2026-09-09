@@ -21,6 +21,8 @@ add_executable(omnibar WIN32
     src/core/paths.cpp
     src/config/toml.cpp
     src/config/config.cpp
+    src/config/widgets.cpp
+    src/config/watcher.cpp
     src/ui/widget.cpp
     src/ui/layout.cpp
     src/render/theme.cpp

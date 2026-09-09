@@ -11,6 +11,7 @@
 #pragma once
 #include "action/bus.h"
 #include "config/config.h"
+#include "config/watcher.h"
 #include "render/renderer.h"
 #include "shell/placement.h"
 #include "shell/trigger.h"
@@ -75,6 +76,10 @@ private:
     // usano. Chiamata all'avvio e, dalla prossima fase, a ogni salvataggio.
     void LoadConfig();
 
+    // Rilegge la configurazione e riporta la barra in riga con essa, senza
+    // riavviare. Chiamata quando il file cambia su disco.
+    void ReloadConfig();
+
     // Il bordo detta due cose insieme: la direzione dell'albero e la modalita'
     // compatta. Stanno in una funzione sola perche' devono cambiare insieme.
     void  ApplyEdge();
@@ -90,6 +95,7 @@ private:
     action::Bus      actions_;
 
     config::Config         cfg_;
+    config::Watcher        watcher_;
     shell::PlacementConfig placementCfg_;
     shell::Placement       placement_;
     shell::TriggerDetector trigger_;

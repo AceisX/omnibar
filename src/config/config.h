@@ -13,6 +13,7 @@
 #pragma once
 #include "core/common.h"
 #include "config/toml.h"
+#include "ui/widget.h"
 
 namespace omni::config {
 
@@ -51,6 +52,13 @@ struct Config {
 
     // ── [log] ──
     int logLevel = 2;   // 0 trace, 1 debug, 2 info, 3 warn, 4 error
+
+    // ── [[widget]] ──
+    //
+    // I widget della barra, nell'ordine in cui sono scritti. Vuoto significa
+    // "non e' stato deciso niente": in quel caso la barra usa il proprio
+    // contenuto di partenza, invece di comparire vuota.
+    std::vector<ui::Widget> widgets;
 };
 
 // Legge il file, se c'e'. Cio' che non e' scritto resta al default, cio' che e'

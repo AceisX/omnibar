@@ -94,6 +94,58 @@ level = "info"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# I widget della barra
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Compaiono nell'ordine in cui sono scritti. Se non ne dichiari nessuno, la
+# barra usa il proprio contenuto di partenza — una barra vuota al primo avvio
+# non spiegherebbe a nessuno a cosa serve.
+#
+# Tipi: button, toggle, label, separator, spacer, avatar.
+# Le icone si indicano per nome (folder, camera, copy, search, play, settings…),
+# non per codice: "sigma" resta "sigma" anche se un giorno l'icona cambia.
+#
+# Ogni widget che si può premere vuole un « tooltip » (o « label », o « a11y »):
+# senza, chi usa uno screen reader sente soltanto "pulsante".
+
+# [[widget]]
+# type    = "button"
+# id      = "note"
+# icon    = "document"
+# tooltip = "Blocco note"
+# action  = { kind = "shell", exe = "notepad.exe" }
+
+# [[widget]]
+# type    = "button"
+# icon    = "search"
+# tooltip = "Cerca"
+# action  = { kind = "keystroke", keys = "Win+S" }
+
+# [[widget]]
+# type = "separator"
+
+# [[widget]]
+# type    = "toggle"
+# icon    = "pin"
+# tooltip = "Tieni aperta"
+# action  = { kind = "internal", name = "bar.pin" }
+
+# [[widget]]
+# type = "avatar"
+
+# Le azioni possibili:
+#
+#   { kind = "keystroke", keys = "Ctrl+Shift+S" }
+#   { kind = "shell", exe = "ffmpeg.exe", args = ["-i", "in.mp4", "out.webm"] }
+#   { kind = "url", url = "https://esempio.it" }
+#   { kind = "internal", name = "bar.pin" }
+#   { kind = "macro", steps = [ { kind = "keystroke", keys = "Alt+W" }, … ] }
+#
+# Gli argomenti di « shell » sono un elenco, un argomento per elemento, mai una
+# riga di comando in una stringa sola. Non è una convenzione: è il motivo per
+# cui in un file di configurazione non si può scrivere una command injection.
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Da qui in giù: non ancora implementato. Le sezioni sconosciute vengono
 # ignorate senza avvisi, così questo file può descrivere anche dove si sta
 # andando senza riempire il log a ogni avvio.

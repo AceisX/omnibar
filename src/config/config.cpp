@@ -1,5 +1,6 @@
 #include "config/config.h"
 
+#include "config/widgets.h"
 #include "core/log.h"
 
 #include <algorithm>
@@ -217,6 +218,9 @@ Config Load(const std::wstring& path, std::vector<toml::Error>& problems) {
     c.logLevel = Choice(root["log"]["level"], "log.level", c.logLevel,
                         {L"trace", L"debug", L"info", L"warn", L"error"}, problems);
 
+    // ── [[widget]] ──
+    c.widgets = BuildWidgets(root["widget"], problems);
+
     // In ordine di riga. Gli errori di sintassi arrivano dal parser e quelli di
     // valore dalla validazione, quindi nascono in due momenti diversi e
     // finirebbero mescolati: chi apre il file per correggerlo lo legge
@@ -230,8 +234,13 @@ Config Load(const std::wstring& path, std::vector<toml::Error>& problems) {
 void Report(const std::wstring& path, const std::vector<toml::Error>& problems) {
     if (problems.empty()) return;
 
-    log::Warn(L"Nella configurazione ci sono " + std::to_wstring(problems.size()) +
-              L" cose da sistemare — " + path);
+    // Singolare e plurale. E' un dettaglio da niente e si nota subito: "ci sono
+    // 1 cose da sistemare" e' scritto da un programma, e chi lo legge smette di
+    // fidarsi anche del resto del messaggio.
+    log::Warn(problems.size() == 1
+                  ? (L"Nella configurazione c'è una cosa da sistemare — " + path)
+                  : (L"Nella configurazione ci sono " + std::to_wstring(problems.size()) +
+                     L" cose da sistemare — " + path));
     for (const toml::Error& e : problems) {
         if (e.line > 0)
             log::Warn(L"  riga " + std::to_wstring(e.line) + L": " + e.message);

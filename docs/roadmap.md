@@ -26,7 +26,7 @@ non sono qualcosa da "sistemare alla fine".
 - [x] Ambiente di prova in Windows Sandbox (`tools\sandbox\`)
 - [x] `config`: parser TOML scritto in casa, schema tipizzato, validazione con errori che
       dicono file, riga e cosa ci si aspettava
-- [ ] `config`: hot-reload su `ReadDirectoryChangesW`
+- [x] `config`: hot-reload — si salva il file e la barra si aggiorna, senza riavviarla
 - [ ] `core`: crash handler
 - [ ] Il gate della CI su RAM e tempo di avvio
 - [ ] Template di issue e PR
@@ -73,7 +73,7 @@ tutto il resto ci sta sopra.
 
 - [x] `action`: `internal`, `keystroke`, `shell`, `url`, `macro` + controllo dei permessi
 - [x] Tray, menu contestuale, autostart
-- [ ] **Estensioni dichiarative (TOML): il tier senza codice** ← subito dopo il parser
+- [x] **Widget dichiarativi (TOML): il tier senza codice**
 
 **Qualità**
 
@@ -88,7 +88,8 @@ Le azioni `keystroke` e `shell` compilano ed esistono ma non sono ancora state p
 bersaglio reale: lo saranno con i primi profili dichiarativi.
 
 **Fatto quando:** si può scrivere un TOML con dei bottoni, salvarlo, e avere una barra che si
-apre sul bordo e li esegue.
+apre sul bordo e li esegue. ✅ — resta il collegamento a un programma specifico, che è il
+context engine della fase 2.
 
 ---
 

@@ -167,7 +167,6 @@ bool App::Init(HINSTANCE inst) {
     shell::AddTrayIcon(hwnd_, LoadIconW(nullptr, IDI_APPLICATION));
 
     BuildTree();
-    ApplyEdge();
     RefreshPlacement(true);
 
     // Si parte a riposo, senza mai rubare il focus. La finestra si posiziona
@@ -180,6 +179,12 @@ bool App::Init(HINSTANCE inst) {
 
     SetCursorTick(kSlowTickMs);
     ScheduleBlink();
+
+    // Salvi il file e la barra si aggiorna. Su qualcosa che si rifinisce a
+    // colpi di due punti in piu' o in meno, la differenza fra "salva e guarda"
+    // e "salva, chiudi, riapri, guarda" e' la differenza fra provare dieci
+    // valori e provarne due.
+    watcher_.Start(paths::Root(), hwnd_, WM_APP_CONFIG);
 
     shell::LogMonitors(placement_.monitor);
     log::Debug(L"placement: finestra " + std::to_wstring(placement_.rect.left) + L"," +
@@ -199,6 +204,7 @@ bool App::Init(HINSTANCE inst) {
 }
 
 void App::Shutdown() {
+    watcher_.Stop();
     if (timerBoosted_) {
         timeEndPeriod(1);
         timerBoosted_ = false;
@@ -208,6 +214,7 @@ void App::Shutdown() {
         KillTimer(hwnd_, IDT_ANIM);
         KillTimer(hwnd_, IDT_AVATAR);
         KillTimer(hwnd_, IDT_BLINK);
+        KillTimer(hwnd_, IDT_RELOAD);
         shell::RemoveTrayIcon(hwnd_);
     }
     renderer_.Shutdown();
@@ -234,8 +241,13 @@ LRESULT App::Handle(UINT msg, WPARAM wp, LPARAM lp) {
             if (wp == IDT_CURSOR) OnCursorTick();
             else if (wp == IDT_ANIM) OnAnimTick();
             else if (wp == IDT_AVATAR) OnAvatarTick();
+            else if (wp == IDT_RELOAD) {
+                KillTimer(hwnd_, IDT_RELOAD);
+                ReloadConfig();
+            }
             else if (wp == IDT_BLINK) {
                 KillTimer(hwnd_, IDT_BLINK);
+        KillTimer(hwnd_, IDT_RELOAD);
                 if (pendingBlinks_ > 0) --pendingBlinks_;
                 blinkStart_ = GetTickCount64();
                 EnsureAvatarTimer();
@@ -268,6 +280,15 @@ LRESULT App::Handle(UINT msg, WPARAM wp, LPARAM lp) {
                 if (LOWORD(lp) == WM_LBUTTONUP) Reveal();
                 else                            OnTrayMenu(pt);
             }
+            return 0;
+
+        case WM_APP_CONFIG:
+            // Gli editor salvano in piu' passi — troncano e riscrivono, oppure
+            // scrivono un file temporaneo e lo rinominano — quindi una singola
+            // modifica arriva come tre o quattro notifiche. Si aspetta che si
+            // calmino invece di ricaricare quattro volte, l'ultima delle quali
+            // sarebbe l'unica giusta.
+            SetTimer(hwnd_, IDT_RELOAD, 250, nullptr);
             return 0;
 
         case WM_APP_QUIT:
@@ -780,6 +801,7 @@ bool App::OnInternalAction(std::wstring_view name) {
         if (avatarMuted_) {
             avatarAttention_ = false;
             KillTimer(hwnd_, IDT_BLINK);
+        KillTimer(hwnd_, IDT_RELOAD);
             pendingBlinks_ = 0;
             blinkStart_    = 0;
             avatarBlink_   = 0.f;
@@ -1013,12 +1035,27 @@ void App::ApplyTheme() {
 // ── L'albero ─────────────────────────────────────────────────────────────────
 
 void App::BuildTree() {
-    // Albero di prova, cablato: serve a collaudare vocabolario, layout,
-    // hit-test e azioni finche' non c'e' il parser TOML (fase 1, prossimo
-    // passo). Nessuno di questi bottoni sopravvivera': li sostituiranno i
-    // profili dichiarativi e i moduli.
     using namespace ui;
 
+    // Se la configurazione dice cosa mettere nella barra, si mette quello.
+    if (!cfg_.widgets.empty()) {
+        root_ = Group(Direction::Row, 10.f, cfg_.widgets);
+        root_.align = Align::Center;
+        hoveredId_.clear();
+        pressedId_.clear();
+
+        // La direzione la decide il bordo, e va (ri)messa qui: costruire
+        // l'albero azzera il gruppo, quindi chiunque chiami BuildTree dopo aver
+        // sistemato il bordo se lo ritroverebbe sovrascritto. E' successo: alla
+        // ricarica a caldo, su un bordo laterale, i widget finivano disposti in
+        // riga dentro una colonna larga quaranta punti — se ne vedeva uno.
+        ApplyEdge();
+        return;
+    }
+
+    // Altrimenti il contenuto di partenza. Non e' un "albero di prova": e' cio'
+    // che vede chi installa la barra e non ha ancora configurato niente, e una
+    // barra vuota al primo avvio non spiega a nessuno a cosa serve.
     root_ = Group(Direction::Row, 10.f, {
         Button("demo.folder", L"folder", L"Cartella",   Internal(L"demo.noop")),
         Button("demo.camera", L"camera", L"Cattura",    Internal(L"demo.noop")),
@@ -1030,14 +1067,39 @@ void App::BuildTree() {
 
         // L'agente sta in fondo, ultimo slot, sempre. E' il posto piu' stabile
         // della barra: tutto quello che sta sopra cambia col programma in
-        // primo piano, lui no. Una cosa che chiede permesso deve stare sempre
-        // dove uno se l'aspetta.
+        // primo piano, lui no.
         Avatar("agent", Internal(L"ai.mute")),
     });
     root_.align = ui::Align::Center;
 
-    // Un pallino, per vedere che si disegna dove deve.
-    if (ui::Widget* rec = ui::Find(root_, "demo.record")) rec->badge = -1;
+    hoveredId_.clear();
+    pressedId_.clear();
+    ApplyEdge();
+}
+
+void App::ReloadConfig() {
+    const Edge  bordoPrima   = cfg_.edge;
+    const float spessorePrima = cfg_.thicknessDip;
+
+    LoadConfig();
+    BuildTree();     // si porta dietro l'orientamento
+    ApplyTheme();
+
+    // Se cambia il bordo o lo spessore cambia anche la finestra, e va rifatta
+    // da capo invece di riadattata.
+    const bool geometria = (cfg_.edge != bordoPrima) || (cfg_.thicknessDip != spessorePrima);
+    if (geometria) {
+        pinned_ = false;
+        SetState(BarState::Hidden);
+        open_ = openTarget_ = 0.f;
+    }
+
+    RefreshPlacement(true);
+    Relayout();
+    ApplyPlacement();
+    Redraw();
+
+    log::Info(L"configurazione ricaricata");
 }
 
 }  // namespace omni
