@@ -371,40 +371,106 @@ void Renderer::DrawButtonLike(const ui::Widget& w, const DrawState& state) {
 }
 
 
-// Un rettangolo arrotondato appoggiato al bordo dello schermo.
+// Il profilo della barra: una figura sola, dalla cima al fondo dello schermo.
 //
-// Il lato che guarda fuori si estende oltre la superficie: D2D lo ritaglia, e
-// restano arrotondati solo i due angoli che si vedono. Costa tre righe invece
-// di una path geometry, e vale per tutti e quattro i bordi perche' l'unica cosa
-// che cambia e' da che parte si estende.
-void Renderer::FillEdgeShape(const DrawState& state, float alongCenter, float alongLen,
-                             float thickness, float radius, const Color& fill, bool stroke) {
-    if (alongLen <= 0.f || thickness <= 0.f) return;
-
+// Si costruisce in coordinate (u, v): `u` corre lungo il bordo, `v` attraverso,
+// misurata dal bordo dello schermo verso l'interno. In questo sistema i quattro
+// lati sono lo stesso problema, e la trasformazione finale e' quattro righe
+// invece di quattro versioni della forma.
+//
+//   v = lineDip     sui fianchi: la linea sottile, per tutta la lunghezza
+//   v = thickness   al centro: la barra
+//   fra i due       una SPALLA, che sale con tangente orizzontale a entrambi
+//                   i capi — quindi si innesta nella linea e nella barra senza
+//                   spigoli ne' cambi di pendenza visibili
+//
+//                    ________________
+//                   /                //   _______________/                  \_______________
+//
+// Prima erano due disegni sovrapposti, una linea e un rettangolo arrotondato
+// appoggiato sopra: fra i due c'era uno scalino netto da quarantaquattro punti
+// a due, e la barra si leggeva come un blocco incollato invece che come la
+// stessa cosa che si apre. La spalla e' cio' che la rende omogenea, e siccome
+// e' lunga quanto serve a coprire il dislivello, cresce insieme all'apertura:
+// da chiusa e' un accenno di sei punti, da aperta e' una svasatura di
+// cinquanta. E' anche cio' che fa "cominciare la barra prima".
+void Renderer::FillProfile(const DrawState& state, float alongCenter, float alongLen,
+                           float thickness, float lineThick) {
     const float w = static_cast<float>(widthPx_) * 96.f / static_cast<float>(dpi_);
     const float h = static_cast<float>(heightPx_) * 96.f / static_cast<float>(dpi_);
 
     const bool  vertical = (state.edge == Edge::Left || state.edge == Edge::Right);
-    const float over     = radius + 1.f;
+    const float full     = vertical ? h : w;
 
-    ui::RectF r;
-    if (vertical) {
-        r.y = alongCenter - alongLen * 0.5f;
-        r.h = alongLen;
-        r.w = thickness + over;
-        r.x = (state.edge == Edge::Right) ? (w - thickness) : (-over);
-    } else {
-        r.x = alongCenter - alongLen * 0.5f;
-        r.w = alongLen;
-        r.h = thickness + over;
-        r.y = (state.edge == Edge::Bottom) ? (h - thickness) : (-over);
+    const Edge edge = state.edge;
+    auto P = [&](float u, float v) -> D2D1_POINT_2F {
+        switch (edge) {
+            case Edge::Right:  return D2D1::Point2F(w - v, u);
+            case Edge::Left:   return D2D1::Point2F(v, u);
+            case Edge::Bottom: return D2D1::Point2F(u, h - v);
+            case Edge::Top:    return D2D1::Point2F(u, v);
+        }
+        return D2D1::Point2F(u, v);
+    };
+
+    thickness = std::max(thickness, lineThick);
+
+    // Quanto e' lunga la spalla. Proporzionale al dislivello da coprire — cosi'
+    // la pendenza resta la stessa a riposo e da aperta — ma con un minimo, e il
+    // minimo e' la parte che conta.
+    //
+    // Senza, a riposo il dislivello e' di cinque punti e la spalla verrebbe
+    // lunga sei: una rampa a quarantacinque gradi, cioe' uno scalino. La
+    // sporgenza tornerebbe a leggersi come una linguetta appiccicata invece che
+    // come la linea che si gonfia.
+    constexpr float kShoulder    = 1.25f;
+    constexpr float kMinShoulder = 26.f;
+    float shoulder = std::max(kMinShoulder, (thickness - lineThick) * kShoulder);
+
+    // Il pianoro non puo' essere piu' corto di niente, e le spalle non possono
+    // uscire dallo schermo: se lo spazio non basta si accorciano entrambe.
+    float plateau = std::max(0.f, alongLen);
+    const float over = 2.f;
+    const float room = (full + over * 2.f - plateau) * 0.5f;
+    if (shoulder > room) shoulder = std::max(0.f, room);
+
+    const float a = alongCenter - plateau * 0.5f;   // inizio del pianoro
+    const float b = alongCenter + plateau * 0.5f;   // fine
+    const float u0 = -over;
+    const float u1 = full + over;
+
+    winrt::com_ptr<ID2D1PathGeometry> geo;
+    if (FAILED(d2dFactory_->CreatePathGeometry(geo.put()))) return;
+    winrt::com_ptr<ID2D1GeometrySink> sink;
+    if (FAILED(geo->Open(sink.put()))) return;
+
+    auto Bez = [&](float u1c, float v1, float u2c, float v2, float u3, float v3) {
+        sink->AddBezier(D2D1::BezierSegment(P(u1c, v1), P(u2c, v2), P(u3, v3)));
+    };
+
+    sink->BeginFigure(P(u0, lineThick), D2D1_FIGURE_BEGIN_FILLED);
+
+    if (shoulder > 0.5f && plateau > 0.5f) {
+        sink->AddLine(P(a - shoulder, lineThick));
+        // I due controlli a meta' spalla, uno alla quota di partenza e uno a
+        // quella d'arrivo: e' la cubica che da' tangente orizzontale a
+        // entrambi i capi, cioe' nessuno spigolo dove si innesta.
+        Bez(a - shoulder * 0.5f, lineThick, a - shoulder * 0.5f, thickness, a, thickness);
+        sink->AddLine(P(b, thickness));
+        Bez(b + shoulder * 0.5f, thickness, b + shoulder * 0.5f, lineThick, b + shoulder, lineThick);
     }
 
-    FillRounded(r, radius, fill);
-    if (stroke) {
-        const D2D1_ROUNDED_RECT rr = D2D1::RoundedRect(Rect(r), radius, radius);
-        rt_->DrawRoundedRectangle(rr, Brush(theme_.border), theme_.borderWidth);
-    }
+    sink->AddLine(P(u1, lineThick));
+
+    // Il fianco esterno esce dalla superficie: D2D lo ritaglia.
+    sink->AddLine(P(u1, -over));
+    sink->AddLine(P(u0, -over));
+    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+
+    if (FAILED(sink->Close())) return;
+
+    rt_->FillGeometry(geo.get(), Brush(theme_.background));
+    rt_->DrawGeometry(geo.get(), Brush(theme_.border), theme_.borderWidth);
 }
 
 void Renderer::DrawWidget(const ui::Widget& w, const DrawState& state) {
@@ -473,24 +539,16 @@ void Renderer::Draw(const ui::Widget& root, const DrawState& state) {
 
     const float t = std::clamp(state.openT, 0.f, 1.f);
 
-    // 1. La linea. C'e' sempre, per tutto il bordo, e non si muove mai: e' lei
-    //    a dire che la barra esiste. Sotto il pannello sta comunque, e siccome
-    //    hanno lo stesso colore le due forme si fondono invece di sovrapporsi.
-    FillEdgeShape(state, center, full, state.lineDip, 0.f, theme_.background, false);
-
-    // 2. Il pannello: a riposo la sporgenza, da aperto la barra. Una sola
-    //    interpolazione per spessore e lunghezza, cosi' non possono sfasarsi.
+    // Una figura sola: la linea sui fianchi, la barra al centro, e fra le due
+    // una spalla che sale senza spigoli. Niente da sovrapporre, quindi niente
+    // scalino da nascondere.
     const float contentLen = (state.contentLenDip > 0.f)
                                  ? std::min(state.contentLenDip, full)
                                  : full;
     const float thickness  = state.nubThickDip + (state.barThickDip - state.nubThickDip) * t;
     const float alongLen   = state.nubLenDip + (contentLen - state.nubLenDip) * t;
 
-    // Il raggio segue il lato piu' corto: la sporgenza resta uno stadio, la
-    // barra aperta arriva al raggio del tema. Nessun caso speciale.
-    const float radius = std::min(theme_.cornerRadius, std::min(alongLen, thickness) * 0.5f);
-
-    FillEdgeShape(state, center, alongLen, thickness, radius, theme_.background, true);
+    FillProfile(state, center, alongLen, thickness, state.lineDip);
 
     // 3. Il contenuto, quando c'e' spazio per contenerlo.
     if (state.contentAlpha > 0.01f) {

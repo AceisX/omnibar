@@ -100,12 +100,12 @@ private:
     bool CreateFormats();
     void Present(float opacity);
 
-    // Un rettangolo arrotondato appoggiato al bordo: il lato che guarda fuori
-    // dallo schermo si estende oltre la superficie e D2D lo ritaglia, cosi'
-    // restano arrotondati solo gli angoli che si vedono. Una funzione sola per
-    // tutti e quattro i bordi.
-    void FillEdgeShape(const DrawState& state, float alongCenter, float alongLen,
-                       float thickness, float radius, const Color& fill, bool stroke);
+    // Il profilo completo della barra — linea, spalle e pianoro — come una sola
+    // figura chiusa. Costruito in coordinate lungo/attraverso e poi
+    // trasformato: cosi' esiste una versione sola della forma invece di
+    // quattro, una per bordo.
+    void FillProfile(const DrawState& state, float alongCenter, float alongLen,
+                     float thickness, float lineThick);
 
     void DrawWidget(const ui::Widget& w, const DrawState& state);
     float Magnification(const ui::Widget& w, const DrawState& state) const;
