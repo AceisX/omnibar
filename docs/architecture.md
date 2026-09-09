@@ -338,6 +338,23 @@ piccolo) le zone a priorità bassa collassano nell'overflow.
 | `Expanded` | un pannello più grande sopra la barra | grafici, shelf, liste |
 | `Suppressed` | niente, nemmeno la zona trigger | fullscreen esclusivo, presentazione, DND |
 
+### 8.0 · Il velo sta sul fondo, non sulla finestra
+
+La barra è velata all'85 %, ma **l'85 % ce l'ha il fondo, non l'intera finestra.**
+
+La differenza non è un dettaglio di implementazione. Velando tutta la finestra — cioè
+abbassando l'alpha di `UpdateLayeredWindow` — diventano trasparenti anche le icone e l'avatar:
+la barra si posa meglio su quello che ha sotto, ma il contenuto perde contrasto proprio dove
+serve, e su uno sfondo movimentato le icone cominciano a confondersi con ciò che traspare.
+
+Velando il solo colore di fondo si ottiene la stessa leggerezza con il contenuto che resta
+pieno. È così che si comportano i pannelli di Windows, ed è il motivo per cui l'opacità nella
+configurazione agisce sul fondo e non sul present.
+
+Resta un limite da conoscere: su uno sfondo chiaro una barra chiara e velata perde definizione,
+e a tenerla staccata rimane il solo bordo. È il prezzo della trasparenza, e non lo si paga con
+un numero più alto — lo si paga scegliendo se si vuole leggerezza o contrasto.
+
 ### 8.1 · Una linea ferma che si apre
 
 A riposo la barra è **una linea di due punti che corre per tutto il bordo**, con una piccola

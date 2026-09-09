@@ -94,19 +94,34 @@ SystemAccent ReadSystemAccent() {
     return a;
 }
 
+// Quanto si smorza il colore dell'accento prima di usarlo. Il colore scelto
+// dall'utente e' pensato per campiture grandi — la barra del titolo, il menu
+// Start — e su superfici piccole come un toggle o una faccia da trenta punti
+// arriva piu' forte del dovuto. Toglierne un quinto lo riporta al peso giusto
+// senza cambiargli tinta: resta riconoscibile come "il suo colore".
+constexpr float kSoften = 0.20f;
+
+namespace {
+Color Soften(const Color& c) { return Mix(c, Desaturate(c), kSoften); }
+}  // namespace
+
+void Theme::ApplyOpacity() {
+    background = background.withAlpha(opacity);
+}
+
 void Theme::ApplyAccent(const SystemAccent& a) {
     // L'accento della barra: sul fondo scuro serve la variante chiara, sul
     // fondo chiaro quella scura. Prendere sempre la stessa vorrebbe dire che
     // meta' degli utenti non vede il proprio colore.
-    accent     = dark ? a.light : a.dark;
+    accent     = Soften(dark ? a.light : a.dark);
     accentText = dark ? Color::Rgb(0x0A0A0A) : Color::Rgb(0xFFFFFF);
 
     // La sfera dell'avatar: dalla variante chiara alla base, cosi' la
     // sfumatura ha volume e resta riconoscibile come "il colore dell'utente".
     // Su tema scuro si parte piu' chiari, perche' li' la sfera deve staccarsi
     // dal fondo invece di fondersi.
-    avatarTop    = dark ? Mix(a.light, Color::Rgb(0xFFFFFF), 0.25f) : a.light;
-    avatarBottom = dark ? a.base : Mix(a.base, a.dark, 0.45f);
+    avatarTop    = Soften(dark ? Mix(a.light, Color::Rgb(0xFFFFFF), 0.25f) : a.light);
+    avatarBottom = Soften(dark ? a.base : Mix(a.base, a.dark, 0.45f));
 
     // L'occhio non e' nero: e' l'accento portato quasi a fondo. Un nero puro su
     // una sfera colorata sembra un buco, una tinta scura dello stesso colore

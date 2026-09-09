@@ -690,7 +690,7 @@ void Renderer::RedrawAvatar(const ui::RectF& rect, const DrawState& state) {
     dirty.right  = std::min<LONG>(static_cast<LONG>(widthPx_),  dirty.right);
     dirty.bottom = std::min<LONG>(static_cast<LONG>(heightPx_), dirty.bottom);
 
-    Present(state.opacity * theme_.opacity, &dirty);
+    Present(state.opacity, &dirty);
 }
 
 void Renderer::DrawWidget(const ui::Widget& w, const DrawState& state) {
@@ -788,12 +788,12 @@ void Renderer::Draw(const ui::Widget& root, const DrawState& state) {
         return;
     }
 
-    Present(state.opacity * theme_.opacity);
+    Present(state.opacity);
 }
 
 void Renderer::Repaint(float opacity) {
     if (!rt_ || !surface_) return;
-    Present(opacity * theme_.opacity);
+    Present(opacity);
 }
 
 void Renderer::Present(float opacity, const RECT* dirtyPx) {

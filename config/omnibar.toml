@@ -33,7 +33,7 @@ thickness = 44
 
 # Angoli e opacità.
 corner_radius = 11
-opacity       = 0.96
+opacity       = 0.85
 
 # auto | dark | light. `auto` segue AppsUseLightTheme e cambia a caldo.
 theme = "auto"

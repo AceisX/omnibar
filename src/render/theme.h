@@ -85,10 +85,16 @@ struct Theme {
     float cornerRadius     = 20.f;
     float widgetRadius     = 8.f;
     float borderWidth      = 1.f;
-    // Quasi opaca. Una barra velata si confonde con quello che ha dietro, e
-    // quello che ha dietro cambia tutto il giorno: la leggibilita' non puo'
-    // dipendere dalla finestra che c'e' sotto in quel momento.
-    float opacity          = 0.99f;
+    // Quanto e' velato il FONDO della barra — non tutta la finestra.
+    //
+    // La differenza conta. Velando l'intera finestra diventano trasparenti
+    // anche le icone e l'avatar: la barra si posa meglio su quello che ha
+    // sotto, ma il contenuto perde contrasto proprio dove serve, e su uno
+    // sfondo movimentato le icone cominciano a confondersi con quello che
+    // traspare. Velando solo il fondo si ottiene lo stesso effetto di
+    // leggerezza con il contenuto che resta pieno — ed e' cosi' che si
+    // comportano i pannelli di Windows.
+    float opacity          = 0.85f;
 
     // Il font del testo e quello delle icone: Segoe Fluent Icons c'e' su
     // Windows 11, Segoe MDL2 Assets e' il ripiego su Windows 10.
@@ -102,6 +108,10 @@ struct Theme {
     // Applica l'accento di sistema al tema: colora l'accento della barra e la
     // sfera dell'avatar. Chiamata a ogni cambio di tema o di colorazione.
     void ApplyAccent(const SystemAccent& accent);
+
+    // Porta `opacity` dentro il colore di fondo. Va chiamata dopo aver
+    // eventualmente cambiato l'opacita', e prima di dare il tema al renderer.
+    void ApplyOpacity();
 
     // Le metriche di layout che discendono dal tema. Il layout non deve
     // conoscere il tema: riceve solo questi numeri.

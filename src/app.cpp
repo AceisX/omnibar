@@ -911,6 +911,7 @@ void App::ApplyTheme() {
     render::Theme t = render::AppsUseLightTheme() ? render::Theme::Light()
                                                  : render::Theme::Dark();
     t.ApplyAccent(render::ReadSystemAccent());
+    t.ApplyOpacity();
     renderer_.SetTheme(t);
 }
 
