@@ -55,14 +55,23 @@ constexpr UINT  kAvatarTickMs = 32;      // ~30 Hz: e' una faccia, non un gioco
 // strabuzzare.
 constexpr float kGazeFullPx = 90.f;
 
-constexpr UINT kBlinkCloseMs = 80;
-constexpr UINT kBlinkOpenMs  = 120;
+// Il battito e' rapido. Un occhio vero si chiude in poche decine di
+// millisecondi e si riapre poco piu' lentamente: allungarlo lo fa sembrare
+// sonnolenza invece che un battito.
+constexpr UINT kBlinkCloseMs = 45;
+constexpr UINT kBlinkOpenMs  = 85;
+
+// Ogni tanto ne fa due di fila. Non e' un vezzo: e' cio' che rompe la
+// regolarita', e la regolarita' e' la cosa che fa capire che dietro c'e' un
+// timer. La pausa fra i due e' corta, come quella vera.
+constexpr UINT kDoubleBlinkPct = 28;
+constexpr UINT kDoubleGapMs    = 170;
 // L'espressione cambia in poco piu' di un decimo: abbastanza da vedersi come
 // un movimento, non tanto da far aspettare chi deve rispondere a una domanda.
 constexpr float kMoodTauMs = 130.f;
 
-constexpr UINT kBlinkMinMs   = 2600;
-constexpr UINT kBlinkMaxMs   = 6800;
+constexpr UINT kBlinkMinMs   = 2200;
+constexpr UINT kBlinkMaxMs   = 5600;
 
 // Apertura e chiusura: ease-out puro, senza oltrepasso.
 //
@@ -205,6 +214,7 @@ LRESULT App::Handle(UINT msg, WPARAM wp, LPARAM lp) {
             else if (wp == IDT_AVATAR) OnAvatarTick();
             else if (wp == IDT_BLINK) {
                 KillTimer(hwnd_, IDT_BLINK);
+                if (pendingBlinks_ > 0) --pendingBlinks_;
                 blinkStart_ = GetTickCount64();
                 EnsureAvatarTimer();
             }
@@ -320,6 +330,19 @@ void App::Reveal() {
     SetState(BarState::Revealed);
     outsideSince_ = 0;
     Relayout();
+
+    // Lo sguardo si allinea di scatto invece di partire da fermo. A barra
+    // chiusa l'avatar non si vede, quindi gli occhi non si muovono: senza
+    // questo, all'apertura comparirebbero centrati e poi si girerebbero verso
+    // di te, come se ti stesse cercando. Ma non ti stava cercando — era li'
+    // che guardava, semplicemente non lo vedevi.
+    POINT cursor{};
+    if (GetCursorPos(&cursor)) {
+        AvatarAimAt(cursor);
+        avatarLookX_ = avatarAimX_;
+        avatarLookY_ = avatarAimY_;
+    }
+
     StartAnimation(1.f);
     Redraw();
 }
@@ -376,7 +399,7 @@ float App::EdgeDistanceDip(POINT cursor) const {
 
 void App::AvatarAimAt(POINT cursor) {
     const RECT av = AvatarScreenRect();
-    if (av.right <= av.left) { avatarAimX_ = avatarAimY_ = 0.f; return; }
+    if (avatarMuted_ || av.right <= av.left) { avatarAimX_ = avatarAimY_ = 0.f; return; }
 
     const float cx = static_cast<float>(av.left + av.right) * 0.5f;
     const float cy = static_cast<float>(av.top + av.bottom) * 0.5f;
@@ -400,7 +423,11 @@ void App::EnsureAvatarTimer() {
     // continua ad aggiornarsi comunque.
     const bool visibile = (open_ >= 0.99f);
     const float moodTarget = avatarAttention_ ? 1.f : 0.f;
-    const bool inMovimento = visibile &&
+
+    // In silenzio si ferma davvero: niente sguardo, niente battito, nessun
+    // timer acceso. "Grigio e fermo" non e' solo l'aspetto — e' anche cio' che
+    // rende credibile che non stia piu' guardando.
+    const bool inMovimento = visibile && !avatarMuted_ &&
                              (blinkStart_ != 0 ||
                               std::fabs(moodTarget - avatarMood_) > 0.004f ||
                               std::fabs(avatarAimX_ - avatarLookX_) > 0.004f ||
@@ -421,7 +448,16 @@ void App::ScheduleBlink() {
     // Intervallo casuale: a cadenza fissa si nota il meccanismo invece della
     // faccia.
     static std::mt19937 rng{std::random_device{}()};
+
+    if (pendingBlinks_ > 0) {
+        // Il secondo di una coppia arriva subito dopo il primo.
+        SetTimer(hwnd_, IDT_BLINK, kDoubleGapMs, nullptr);
+        return;
+    }
+
     std::uniform_int_distribution<UINT> quando(kBlinkMinMs, kBlinkMaxMs);
+    std::uniform_int_distribution<UINT> dado(0, 99);
+    pendingBlinks_ = (dado(rng) < kDoubleBlinkPct) ? 1 : 0;
     SetTimer(hwnd_, IDT_BLINK, quando(rng), nullptr);
 }
 
@@ -440,6 +476,7 @@ void App::PushAvatarState() {
     st.opacity         = 1.f;
     st.avatarHovered   = (hoveredId_ == "agent");
     st.avatarMood      = avatarMood_;
+    st.avatarMuted     = avatarMuted_;
     st.avatarLookX     = avatarLookX_;
     st.avatarLookY     = avatarLookY_;
     st.avatarBlink     = avatarBlink_;
@@ -683,12 +720,22 @@ bool App::OnInternalAction(std::wstring_view name) {
         return true;
     }
     if (name == L"app.quit")  { PostMessageW(hwnd_, WM_APP_QUIT, 0, 0); return true; }
-    if (name == L"ai.panel") {
-        // Fase 4: qui si aprira' il pannello dell'agente — richieste di
-        // permesso, utilizzo, azioni sulla selezione. Per ora si limita a
-        // dimostrare che l'avatar riceve il click anche a barra chiusa.
-        log::Info(L"avatar premuto (il pannello dell'agente arriva con la fase 4)");
-        avatarAttention_ = !avatarAttention_;   // provvisorio: mostra l'espressione
+    if (name == L"ai.mute") {
+        // Cliccare l'agente lo mette in silenzio: smette di chiedere permessi e
+        // di segnalare, e si vede — diventa grigio e si ferma. E' il gesto piu'
+        // naturale che ci sia su una faccia che ti interrompe, e non ha bisogno
+        // di essere spiegato: si clicca di nuovo per riattivarlo.
+        avatarMuted_ = !avatarMuted_;
+        if (avatarMuted_) {
+            avatarAttention_ = false;
+            KillTimer(hwnd_, IDT_BLINK);
+            pendingBlinks_ = 0;
+            blinkStart_    = 0;
+            avatarBlink_   = 0.f;
+        } else {
+            ScheduleBlink();
+        }
+        log::Info(avatarMuted_ ? L"agente in silenzio" : L"agente di nuovo attivo");
         EnsureAvatarTimer();
         Redraw();
         return true;
@@ -816,6 +863,7 @@ void App::Redraw() {
     state.magnify       = magnify_;
     state.avatarHovered   = (hoveredId_ == "agent");
     state.avatarMood      = avatarMood_;
+    state.avatarMuted     = avatarMuted_;
     state.avatarLookX     = avatarLookX_;
     state.avatarLookY     = avatarLookY_;
     state.avatarBlink     = avatarBlink_;
@@ -888,7 +936,7 @@ void App::BuildTree() {
         // della barra: tutto quello che sta sopra cambia col programma in
         // primo piano, lui no. Una cosa che chiede permesso deve stare sempre
         // dove uno se l'aspetta.
-        Avatar("agent", Internal(L"ai.panel")),
+        Avatar("agent", Internal(L"ai.mute")),
     });
     root_.align = ui::Align::Center;
 

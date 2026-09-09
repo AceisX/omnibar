@@ -24,6 +24,14 @@ struct Color {
     constexpr Color withAlpha(float alpha) const { return Color{r, g, b, alpha}; }
 };
 
+// Toglie il colore lasciando la stessa luminosita' percepita. I coefficienti
+// sono quelli della luminanza: sostituirli con una media dei tre canali fa
+// diventare i blu troppo chiari e i rossi troppo scuri.
+constexpr Color Desaturate(const Color& c) {
+    const float y = c.r * 0.2126f + c.g * 0.7152f + c.b * 0.0722f;
+    return Color{y, y, y, c.a};
+}
+
 // Miscela lineare fra due colori, 0 = a, 1 = b.
 constexpr Color Mix(const Color& a, const Color& b, float t) {
     return Color{a.r + (b.r - a.r) * t,

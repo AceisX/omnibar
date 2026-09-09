@@ -508,14 +508,54 @@ void Renderer::DrawAvatar(const ui::RectF& rect, const DrawState& state) {
 
     const float mood  = std::clamp(state.avatarMood, 0.f, 1.f);
     const float blink = std::clamp(state.avatarBlink, 0.f, 1.f);
-    const float lx    = std::clamp(state.avatarLookX, -1.f, 1.f) * r * 0.16f;
-    const float ly    = std::clamp(state.avatarLookY, -1.f, 1.f) * r * 0.14f;
+    const float gx    = std::clamp(state.avatarLookX, -1.f, 1.f);
+    const float gy    = std::clamp(state.avatarLookY, -1.f, 1.f);
+
+    // Lo sguardo si divide fra la TESTA e gli OCCHI.
+    //
+    // Muovere solo le pupille dentro una faccia immobile e' il modo piu' rapido
+    // per ottenere qualcosa che sembra un quadro che ti segue con lo sguardo:
+    // inquietante, non vivo. Una testa vera si orienta — si sposta un poco
+    // verso quello che guarda e si inclina di conseguenza — e gli occhi fanno
+    // il resto del percorso. Diviso cosi', la stessa deflessione totale si
+    // legge come "si e' girato" invece che "ha spostato gli occhi".
+    const float headDx = gx * r * 0.11f;
+    const float headDy = gy * r * 0.13f;
+    const float headRoll = gx * 6.5f;   // gradi: inclina nella direzione in cui guarda
+
+    const float lx = gx * r * 0.12f;
+    const float ly = gy * r * 0.15f;
+
+    // Tutto il disegno gira e si sposta insieme: la testa e' un pezzo solo, e
+    // gli occhi si muovono DENTRO di essa, non insieme allo schermo.
+    D2D1_MATRIX_3X2_F outer{};
+    rt_->GetTransform(&outer);
+    rt_->SetTransform(D2D1::Matrix3x2F::Rotation(headRoll, c) *
+                      D2D1::Matrix3x2F::Translation(headDx, headDy) * outer);
 
     // ── Il corpo ──
+    //
+    // In silenzio perde il colore. Non e' solo un cambio di tinta: e' il segno
+    // che quella cosa li' non parlera' piu' finche' non la si riattiva, e
+    // dev'essere leggibile con la coda dell'occhio come lo era l'anello.
+    const Color bodyTop = state.avatarMuted
+                              ? Mix(Desaturate(theme_.avatarTop), theme_.background, 0.35f)
+                              : theme_.avatarTop;
+    const Color bodyBot = state.avatarMuted
+                              ? Mix(Desaturate(theme_.avatarBottom), theme_.background, 0.35f)
+                              : theme_.avatarBottom;
+
+    if (mutedBrush_ != state.avatarMuted) {
+        // La sfumatura e' costruita una volta con i suoi due estremi: se
+        // cambiano, va rifatta.
+        avatarBrush_ = nullptr;
+        mutedBrush_  = state.avatarMuted;
+    }
+
     if (!avatarBrush_) {
         const D2D1_GRADIENT_STOP stops[] = {
-            {0.f, D2D(theme_.avatarTop)},
-            {1.f, D2D(theme_.avatarBottom)},
+            {0.f, D2D(bodyTop)},
+            {1.f, D2D(bodyBot)},
         };
         winrt::com_ptr<ID2D1GradientStopCollection> coll;
         if (SUCCEEDED(rt_->CreateGradientStopCollection(stops, 2, coll.put()))) {
@@ -537,7 +577,7 @@ void Renderer::DrawAvatar(const ui::RectF& rect, const DrawState& state) {
         avatarBrush_->SetOpacity(contentAlpha_);
         rt_->FillRoundedRectangle(shape, avatarBrush_.get());
     } else {
-        rt_->FillRoundedRectangle(shape, Brush(theme_.avatarBottom));
+        rt_->FillRoundedRectangle(shape, Brush(bodyBot));
     }
 
     // ── Gli occhi ──
@@ -545,9 +585,19 @@ void Renderer::DrawAvatar(const ui::RectF& rect, const DrawState& state) {
     // Tre numeri per occhio. A riposo sono stretti e alti; con qualcosa da
     // chiedere si allargano, si alzano e si inclinano verso l'interno.
     const float eyeDx  = r * 0.33f;
-    const float eyeDy  = r * 0.04f - mood * r * 0.05f;
+
+    // Gli occhi stanno SOPRA la meta'. Erano appena sotto, ed e' bastato quello
+    // per farli leggere come rivolti in basso anche quando guardavano dritto:
+    // un viso reale ha gli occhi intorno al 45 % dell'altezza, e sotto la linea
+    // mediana l'occhio dice "sto guardando per terra" a prescindere da dove
+    // punta davvero.
+    const float eyeDy  = -r * 0.07f - mood * r * 0.05f;
     const float eyeW   = r * (0.26f + mood * 0.07f);
-    const float eyeH   = r * (0.40f + mood * 0.14f) * (1.f - blink * 0.95f);
+
+    // In silenzio gli occhi si socchiudono. Chiuderli del tutto sembrerebbe
+    // addormentato — e uno che dorme lo si sveglia, mentre uno zittito no.
+    const float mutedH = state.avatarMuted ? 0.45f : 1.f;
+    const float eyeH   = r * (0.40f + mood * 0.14f) * (1.f - blink * 0.95f) * mutedH;
     const float tilt   = mood * 9.f;   // gradi, verso l'interno
 
     D2D1_MATRIX_3X2_F saved{};
@@ -561,12 +611,15 @@ void Renderer::DrawAvatar(const ui::RectF& rect, const DrawState& state) {
 
         const ui::RectF eye{e.x - eyeW * 0.5f, e.y - eyeH * 0.5f, eyeW, eyeH};
         const float eyeR = std::min(eyeW, eyeH) * 0.5f;
-        rt_->FillRoundedRectangle(D2D1::RoundedRect(Rect(eye), eyeR, eyeR),
-                                  Brush(theme_.avatarEye));
+        rt_->FillRoundedRectangle(
+            D2D1::RoundedRect(Rect(eye), eyeR, eyeR),
+            Brush(state.avatarMuted ? Desaturate(theme_.avatarEye) : theme_.avatarEye));
 
         // Il riflesso sparisce con la palpebra: un puntino sospeso su un occhio
         // chiuso e' la cosa che fa sembrare rotto tutto il resto.
-        if (blink < 0.45f) {
+        // Niente riflesso da muto: e' il riflesso a dare gli occhi per vivi, e
+        // qui e' esattamente quello che non devono sembrare.
+        if (blink < 0.45f && !state.avatarMuted) {
             const float g = std::max(0.7f, eyeW * 0.26f);
             const float a = theme_.avatarGlint.a * (1.f - blink * 2.2f);
             rt_->FillEllipse(
@@ -577,7 +630,12 @@ void Renderer::DrawAvatar(const ui::RectF& rect, const DrawState& state) {
         rt_->SetTransform(saved);
     }
 
+    rt_->SetTransform(outer);
+
     // ── L'anello di richiamo ──
+    //
+    // Fuori dalla trasformazione della testa: e' un segnale di stato, non un
+    // pezzo del personaggio, e non deve ballare quando lui si gira.
     if (mood > 0.01f) {
         const ui::RectF halo{body.x - 2.4f, body.y - 2.4f, body.w + 4.8f, body.h + 4.8f};
         rt_->DrawRoundedRectangle(D2D1::RoundedRect(Rect(halo), corner + 2.4f, corner + 2.4f),
@@ -593,9 +651,11 @@ void Renderer::RedrawAvatar(const ui::RectF& rect, const DrawState& state) {
     if (!rt_ || !surface_ || rect.empty()) return;
 
     // Un margine attorno: l'anello di richiamo sborda dal rettangolo dello slot,
-    // e l'antialiasing sborda di una frazione di punto oltre. Ripulire troppo
-    // poco lascerebbe un alone del fotogramma precedente.
-    const float pad = 6.f;
+    // la testa si sposta e si inclina seguendo il cursore, e l'antialiasing
+    // sborda di una frazione di punto oltre. Ripulire troppo poco lascerebbe un
+    // alone del fotogramma precedente — e con la testa che si muove sarebbe una
+    // scia, non un alone.
+    const float pad = 11.f;
     const ui::RectF area{rect.x - pad, rect.y - pad, rect.w + pad * 2.f, rect.h + pad * 2.f};
 
     rt_->BeginDraw();

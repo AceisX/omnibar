@@ -776,6 +776,27 @@ L'umore è un **continuo, non un interruttore**: il passaggio fra riposo e attes
 poco più di un decimo di secondo. Una faccia che cambia espressione di scatto non è una
 faccia, sono due immagini.
 
+**Gli occhi stanno sopra la metà.** Erano appena sotto, ed è bastato quello per farli leggere
+come rivolti in basso anche quando guardavano dritto: un viso reale ha gli occhi intorno al
+45 % dell'altezza, e sotto la linea mediana l'occhio dice "sto guardando per terra" a
+prescindere da dove punta davvero.
+
+#### Cliccarlo lo mette in silenzio
+
+Un click sull'agente lo **silenzia**: smette di chiedere permessi e di segnalare, diventa
+grigio e si ferma. Un altro click lo riattiva.
+
+È il gesto più naturale che ci sia su una faccia che ti interrompe, e non ha bisogno di essere
+spiegato — nessuna voce di menu, nessuna impostazione da cercare mentre stai lavorando. Ed è
+anche l'unica cosa che quel widget può fare che nessun altro può: le richieste dell'agente
+passano tutte da lì, quindi lì si spengono.
+
+"Grigio e fermo" non è solo l'aspetto: da silenziato **non si aggiorna nemmeno lo sguardo**, e
+i timer restano spenti. È ciò che rende credibile che non stia più guardando — e costa meno di
+quando è attivo, il che è giusto per uno stato che si sceglie per essere lasciati in pace.
+Gli occhi si socchiudono senza chiudersi: chiusi sembrerebbe addormentato, e uno che dorme lo
+si sveglia, mentre uno zittito no.
+
 È anche l'unico punto di colore della barra, ed è voluto: fra icone tutte monocrome, una faccia
 colorata si legge come qualcuno invece che come l'ennesimo comando.
 
@@ -804,10 +825,24 @@ cursore e dove l'occhio è arrivato c'è tutta la differenza fra uno sguardo e u
 sotto i cinquanta millisecondi sembra incollato al mouse, sopra i duecento sembra distratto.
 Quando il cursore gli arriva addosso gli occhi tornano al centro invece di strabuzzare.
 
-Il battito ha un intervallo casuale fra 2,6 e 6,8 secondi — a cadenza fissa si noterebbe il
-meccanismo invece della faccia — e chiude l'occhio schiacciandolo, non facendolo sparire: un
-occhio che svanisce si legge come un errore di disegno, uno che si appiattisce si legge come
-una palpebra.
+Il battito è rapido — 45 ms per chiudere, 85 per riaprire — perché un occhio vero fa così, e
+allungarlo lo fa sembrare sonnolenza invece che un battito. L'intervallo è casuale fra 2,2 e
+5,6 secondi, e una volta su quattro ne fa **due di fila**: non è un vezzo, è ciò che rompe la
+regolarità, e la regolarità è la cosa che fa capire che dietro c'è un timer.
+
+Chiude l'occhio schiacciandolo, non facendolo sparire: un occhio che svanisce si legge come un
+errore di disegno, uno che si appiattisce si legge come una palpebra.
+
+**Lo sguardo si divide fra la testa e gli occhi.** Muovere solo le pupille dentro una faccia
+immobile è il modo più rapido per ottenere qualcosa che sembra un quadro che ti segue con lo
+sguardo: inquietante, non vivo. Una testa vera si orienta — si sposta un poco verso quello che
+guarda e si inclina di conseguenza — e gli occhi fanno il resto del percorso. Diviso così, la
+stessa deflessione totale si legge come "si è girato" invece che "ha spostato gli occhi".
+
+All'apertura lo sguardo **si allinea di scatto** invece di partire da fermo. A barra chiusa
+l'avatar non si vede, quindi gli occhi non si muovono; senza questo comparirebbero centrati e
+poi si girerebbero verso di te, come se ti stesse cercando. Ma non ti stava cercando: era lì
+che guardava, semplicemente non lo vedevi.
 
 **Il costo è zero quando non si muove.** Due cose lo garantiscono:
 

@@ -82,6 +82,9 @@ struct DrawState {
     // espressione di scatto non e' una faccia, e' due immagini.
     float avatarMood      = 0.f;
 
+    // In silenzio: grigio e fermo. Non chiede piu' niente e si vede.
+    bool  avatarMuted     = false;
+
     // Dove guarda, -1..1 sui due assi, gia' smorzato da App. Non e' la
     // direzione del cursore: e' dove l'occhio e' arrivato inseguendola. La
     // differenza fra le due e' tutto cio' che distingue uno sguardo da un
@@ -182,6 +185,7 @@ private:
     // Sfumatura della sfera e pennino a estremita' tonde per le sopracciglia:
     // si creano una volta e vivono quanto la superficie.
     winrt::com_ptr<ID2D1RadialGradientBrush> avatarBrush_;
+    bool mutedBrush_ = false;   // con quale delle due tavolozze e' stata costruita
 
     winrt::com_ptr<IDWriteTextFormat> fmtText_;
     winrt::com_ptr<IDWriteTextFormat> fmtIcon_;

@@ -117,6 +117,7 @@ private:
     // L'avatar in fondo alla barra: si vede anche a riposo, quindi deve poter
     // ricevere il cursore anche quando tutto il resto e' click-through.
     bool  avatarHovered_   = false;
+    bool  avatarMuted_     = false;   // silenziato: non chiede piu' niente
     bool  avatarAttention_ = false;   // la meta'
     float avatarMood_      = 0.f;     // dove e' arrivata l'espressione
 
@@ -124,6 +125,7 @@ private:
     float     avatarAimX_  = 0.f, avatarAimY_  = 0.f;   // dove vorrebbe guardare
     float     avatarBlink_ = 0.f;                       // 0 aperti, 1 chiusi
     ULONGLONG blinkStart_  = 0;                         // 0 = non sta sbattendo
+    int       pendingBlinks_ = 0;                       // > 0 = ne deve fare un altro subito
     ULONGLONG avatarTick_  = 0;
     bool      avatarTimerOn_ = false;
 
