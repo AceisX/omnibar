@@ -39,13 +39,26 @@ if ($Ricarica) {
 # I percorsi dentro un .wsb devono essere assoluti: il formato non conosce
 # variabili. Invece di lasciarli scritti a mano — e sbagliati appena la cartella
 # si sposta — si riscrivono qui su quelli veri di questa copia del repository.
-$wsb   = Join-Path $PSScriptRoot 'omnibar.wsb'
-$testo = Get-Content $wsb -Raw -Encoding UTF8
-$nuovo = [regex]::Replace($testo,
-    '(?<=<HostFolder>).*?(?=\(dist|tools\sandbox)</HostFolder>)',
-    [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $radice })
-if ($nuovo -ne $testo) {
-    Set-Content $wsb -Value $nuovo -Encoding UTF8 -NoNewline
+# Riga per riga e senza espressioni regolari: qui dentro ci sono backslash,
+# parentesi e barre verticali, cioe' tre modi diversi di sbagliare una regex per
+# una sostituzione che di suo e' banale.
+$wsb    = Join-Path $PSScriptRoot 'omnibar.wsb'
+$righe  = Get-Content $wsb -Encoding UTF8
+$scritto = $false
+
+$righe = $righe | ForEach-Object {
+    if ($_ -match '^\s*<HostFolder>.*</HostFolder>\s*$') {
+        $indent = $_.Substring(0, $_.IndexOf('<'))
+        $vecchio = $_.Trim()
+        $sotto = if ($vecchio -like '*tools*sandbox*') { 'tools\sandbox' } else { 'dist' }
+        $nuovo = "$indent<HostFolder>$radice\$sotto</HostFolder>"
+        if ($nuovo -ne $_) { $script:scritto = $true }
+        $nuovo
+    } else { $_ }
+}
+
+if ($scritto) {
+    Set-Content $wsb -Value $righe -Encoding UTF8
     Write-Host "Percorsi del .wsb aggiornati su: $radice"
 }
 
