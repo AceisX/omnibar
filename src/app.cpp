@@ -190,7 +190,8 @@ bool App::Init(HINSTANCE inst) {
                L"  zona sensibile " + std::to_wstring(placement_.trigger.left) + L"," +
                std::to_wstring(placement_.trigger.top) + L".." +
                std::to_wstring(placement_.trigger.right) + L"," +
-               std::to_wstring(placement_.trigger.bottom));
+               std::to_wstring(placement_.trigger.bottom) +
+               (placement_.softEdge ? L"  (bordo non libero: allargata)" : L""));
     log::Info(std::wstring(L"Barra pronta — bordo a ") + EdgeName(placementCfg_.edge) +
               L", " + std::to_wstring(placement_.sizePx.cx) + L"x" +
               std::to_wstring(placement_.sizePx.cy) + L" px, a riposo");

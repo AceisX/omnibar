@@ -34,6 +34,33 @@ HMONITOR PrimaryMonitor() {
 
 namespace {
 
+// C'e' un altro schermo appena oltre questo bordo?
+//
+// Conta perche' un bordo condiviso con un altro monitor NON e' un bordo: il
+// cursore non ci si ferma, ci passa attraverso e finisce sull'altro schermo.
+// E' lo stesso problema della taskbar visto da un'altra parte — in entrambi i
+// casi viene a mancare la cosa che rende facile colpire un bersaglio sul bordo,
+// cioe' il fatto che oltre non ci sia niente.
+//
+// Si controlla chiedendo a Windows che monitor c'e' in un punto appena oltre il
+// bordo. E' piu' affidabile che confrontare rettangoli: gli schermi possono
+// essere disallineati, di dimensioni diverse, o toccarsi solo per un tratto.
+bool BordoCondiviso(HMONITOR mio, const RECT& schermo, Edge edge) {
+    const int cx = (schermo.left + schermo.right) / 2;
+    const int cy = (schermo.top + schermo.bottom) / 2;
+
+    POINT oltre{};
+    switch (edge) {
+        case Edge::Bottom: oltre = POINT{cx, schermo.bottom + 2}; break;
+        case Edge::Top:    oltre = POINT{cx, schermo.top - 2};    break;
+        case Edge::Left:   oltre = POINT{schermo.left - 2, cy};   break;
+        case Edge::Right:  oltre = POINT{schermo.right + 2, cy};  break;
+    }
+
+    const HMONITOR altro = MonitorFromPoint(oltre, MONITOR_DEFAULTTONULL);
+    return altro != nullptr && altro != mio;
+}
+
 struct Elenco {
     HMONITOR              scelto;
     std::vector<std::wstring> righe;
@@ -105,15 +132,21 @@ Placement Compute(const PlacementConfig& cfg, HMONITOR monitor) {
 
     // Se quel bordo e' libero, la zona sensibile puo' essere sottilissima: il
     // cursore ci sbatte contro e si ferma da solo, perche' oltre non c'e'
-    // schermo. E' il trucco su cui si reggono tutti i bersagli sui bordi.
+    // niente. E' il trucco su cui si reggono tutti i bersagli sui bordi.
     //
-    // Se invece c'e' la taskbar, quel trucco non c'e' piu': il bordo della
-    // nostra zona sta in mezzo allo schermo, e per colpirlo bisogna FERMARSI
-    // nel punto giusto invece di lanciare il mouse. Sei pixel diventano
-    // impossibili. Con la taskbar davanti la zona si allarga: non e' una
-    // taratura, e' un problema diverso.
+    // Due situazioni lo annullano, e sono lo stesso problema visto da due
+    // parti: la taskbar sul nostro bordo, e un altro monitor attaccato al
+    // nostro bordo. In entrambi i casi oltre il bordo c'e' qualcosa, il cursore
+    // non si ferma, e per colpire la zona bisogna FERMARSI nel punto giusto
+    // invece di lanciare il mouse — cosa che con sei pixel non riesce a
+    // nessuno. Il secondo caso e' quello che rende inutilizzabile una barra sul
+    // bordo superiore quando c'e' un monitor sopra, che e' una disposizione
+    // comunissima.
+    const bool condiviso = BordoCondiviso(monitor, screen, cfg.edge);
+
     int trigger = std::max(1, cfg.triggerPx);
-    if (occupato > 0) trigger = std::max(trigger, Dip(20.f, p.dpi));
+    if (occupato > 0 || condiviso) trigger = std::max(trigger, Dip(20.f, p.dpi));
+    p.softEdge = (occupato > 0 || condiviso);
 
     p.horizontal  = (cfg.edge == Edge::Bottom || cfg.edge == Edge::Top);
     p.thicknessPx = thickness;

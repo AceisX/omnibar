@@ -57,6 +57,11 @@ struct Placement {
     bool horizontal  = true;
     int  thicknessPx = 0;
 
+    // Il bordo non e' "duro": oltre c'e' la taskbar o un altro schermo, quindi
+    // il cursore non ci si ferma da solo. La zona sensibile e' stata allargata
+    // di conseguenza.
+    bool softEdge    = false;
+
     bool valid() const { return monitor != nullptr && sizePx.cx > 0 && sizePx.cy > 0; }
 };
 

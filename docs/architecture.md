@@ -480,13 +480,28 @@ Tre problemi che decidono se la barra è piacevole o insopportabile dopo due gio
 - **Conflitti con Windows.** La zona trigger non deve coprire l'area della taskbar (nemmeno se
   in auto-hide), gli hot corner, né il bordo dove Windows apre gli snap layout. Le esclusioni si
   ricalcolano a ogni `ABN_POSCHANGED` e a ogni cambio di risoluzione: mai memorizzate.
-- **Il bordo occupato dalla taskbar è un problema diverso, non una taratura.** Su un bordo
-  libero la zona sensibile può essere di pochi pixel: il cursore ci sbatte contro e si ferma da
-  solo, perché oltre non c'è schermo — è il trucco su cui si reggono tutti i bersagli sui bordi.
-  Con la taskbar davanti quel trucco sparisce: il bordo della zona sta in mezzo allo schermo, e
-  per colpirlo bisogna **fermarsi** nel punto giusto invece di lanciare il mouse. Sei pixel
-  diventano impossibili. Quando il nostro bordo è occupato — si vede confrontando il rettangolo
-  del monitor con l'area di lavoro — la zona si allarga a venti punti.
+- **I bordi "non liberi" sono un problema diverso, non una taratura.** Su un bordo libero la
+  zona sensibile può essere di pochi pixel: il cursore ci sbatte contro e si ferma da solo,
+  perché oltre non c'è niente — è il trucco su cui si reggono tutti i bersagli sui bordi.
+
+  Due situazioni lo annullano, e sono lo stesso problema visto da due parti:
+
+  | | |
+  |---|---|
+  | **La taskbar sul nostro bordo** | il bordo della zona sta in mezzo allo schermo |
+  | **Un altro monitor attaccato al nostro bordo** | il cursore non si ferma, passa sull'altro schermo |
+
+  In entrambi i casi per colpire la zona bisogna **fermarsi** nel punto giusto invece di
+  lanciare il mouse, e con sei pixel non ci riesce nessuno. Il secondo caso rende inutilizzabile
+  una barra sul bordo superiore quando c'è un monitor sopra — una disposizione comunissima, e
+  un difetto che si sarebbe visto solo su una macchina con due schermi.
+
+  Il monitor adiacente si scopre chiedendo a Windows che schermo c'è in un punto appena oltre il
+  bordo: più affidabile che confrontare rettangoli, perché gli schermi possono essere
+  disallineati, di dimensioni diverse, o toccarsi solo per un tratto. Quando il bordo non è
+  libero la zona passa a venti punti.
+
+  Misurato su uno schermo con la taskbar in basso: `bottom` 20 px, `top`/`left`/`right` 6 px.
 - **Il laptop.** Al bordo dello schermo col trackpad ci si arriva male. Serve una scorciatoia
   globale che apra la barra e ci metta il focus da tastiera, e la barra deve essere navigabile
   interamente con le frecce e Invio, senza mai toccare il mouse.
