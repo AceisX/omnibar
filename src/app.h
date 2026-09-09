@@ -116,8 +116,9 @@ private:
 
     // L'avatar in fondo alla barra: si vede anche a riposo, quindi deve poter
     // ricevere il cursore anche quando tutto il resto e' click-through.
-    bool avatarHovered_   = false;
-    bool avatarAttention_ = false;
+    bool  avatarHovered_   = false;
+    bool  avatarAttention_ = false;   // la meta'
+    float avatarMood_      = 0.f;     // dove e' arrivata l'espressione
 
     float     avatarLookX_ = 0.f, avatarLookY_ = 0.f;   // dove guarda ora
     float     avatarAimX_  = 0.f, avatarAimY_  = 0.f;   // dove vorrebbe guardare

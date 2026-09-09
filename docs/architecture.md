@@ -741,22 +741,40 @@ La strada praticabile separa nettamente le due cose:
 
 #### Com'è disegnato
 
-Trenta punti di diametro sono pochi, e questo detta ogni scelta: niente bocca (a questa scala
-diventa una macchia), niente naso, nessun dettaglio che al 100 % di DPI finirebbe su meno di
-due pixel. Restano tre cose, e bastano a leggere una faccia:
+**Un quadrato con gli angoli molto smussati, e dentro due soli occhi.**
+
+Trenta punti di lato sono pochi, e questo detta ogni scelta: niente bocca (a questa scala
+diventa una macchia), niente naso, niente sopracciglia, nessun dettaglio che al 100 % di DPI
+finirebbe su meno di due pixel.
+
+Ci si è arrivati scartando la prima versione, che era un cerchio con le sopracciglia. Non
+funzionava per due motivi:
+
+- **La forma tonda non c'entrava niente con il resto.** La barra è fatta di rettangoli
+  arrotondati; in mezzo a quelli un cerchio si legge come una cosa incollata da un'altra
+  applicazione. Il raggio a un terzo del lato la fa leggere come una piastrella — che è il
+  linguaggio di Windows — e la mette in famiglia con la barra.
+- **Le sopracciglia erano troppo poco spazio per troppo significato.** Due trattini di un paio
+  di pixel che, a seconda di come cadono, fanno sembrare la faccia arrabbiata. Sono state
+  aggiustate una volta e restavano fragili: un dettaglio che si rompe a ogni cambio di DPI non
+  è un dettaglio, è un rischio.
+
+Quello che resta:
 
 - **Il volume** lo fa una sfumatura radiale con l'origine spostata in alto a sinistra. Senza,
-  il disco resta un cerchio piatto e non una testa.
-- **Il riflesso negli occhi** è un punto bianco di un punto e mezzo, e da solo fa la differenza
-  fra due buchi e due occhi: è il riflesso a dare l'impressione che siano bagnati, cioè vivi.
-  Sparisce con la palpebra — un puntino sospeso su un occhio chiuso fa sembrare rotto tutto il
-  resto.
-- **Le sopracciglia** portano l'espressione. A questa scala gli occhi possono solo guardare e
-  chiudersi; l'umore lo racconta l'inclinazione di due archi. Sottili, alti e chiari: la prima
-  versione li aveva spessi, dritti e vicini agli occhi, e due barre orizzontali a quella
-  distanza si leggono come un cipiglio — la faccia sembrava arrabbiata a riposo. Sono archi e
-  non segmenti perché un tratto rettilineo sopra un occhio tondo si vede subito che l'ha
-  disegnato un computer.
+  la forma resta una tessera piatta e non una testa.
+- **Gli occhi portano tutta l'espressione**, ognuno con larghezza, altezza e inclinazione
+  proprie. È il modello dei generatori di avatar geometrici, ed è l'unico che regge a questa
+  scala: un occhio più alto e tondo legge come attenzione, uno più basso come calma,
+  un'inclinazione verso l'interno come domanda. Tre numeri per occhio, e niente che possa
+  rompersi.
+- **Il riflesso** è un punto bianco di un punto e mezzo, e da solo fa la differenza fra due
+  buchi e due occhi: è lui a darli per bagnati, cioè vivi. Sparisce con la palpebra — un
+  puntino sospeso su un occhio chiuso fa sembrare rotto tutto il resto.
+
+L'umore è un **continuo, non un interruttore**: il passaggio fra riposo e attesa si anima in
+poco più di un decimo di secondo. Una faccia che cambia espressione di scatto non è una
+faccia, sono due immagini.
 
 È anche l'unico punto di colore della barra, ed è voluto: fra icone tutte monocrome, una faccia
 colorata si legge come qualcuno invece che come l'ennesimo comando.

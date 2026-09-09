@@ -57,6 +57,10 @@ constexpr float kGazeFullPx = 90.f;
 
 constexpr UINT kBlinkCloseMs = 80;
 constexpr UINT kBlinkOpenMs  = 120;
+// L'espressione cambia in poco piu' di un decimo: abbastanza da vedersi come
+// un movimento, non tanto da far aspettare chi deve rispondere a una domanda.
+constexpr float kMoodTauMs = 130.f;
+
 constexpr UINT kBlinkMinMs   = 2600;
 constexpr UINT kBlinkMaxMs   = 6800;
 
@@ -395,8 +399,10 @@ void App::EnsureAvatarTimer() {
     // Quando riapre, lo sguardo e' gia' puntato dove serve perche' la meta'
     // continua ad aggiornarsi comunque.
     const bool visibile = (open_ >= 0.99f);
+    const float moodTarget = avatarAttention_ ? 1.f : 0.f;
     const bool inMovimento = visibile &&
                              (blinkStart_ != 0 ||
+                              std::fabs(moodTarget - avatarMood_) > 0.004f ||
                               std::fabs(avatarAimX_ - avatarLookX_) > 0.004f ||
                               std::fabs(avatarAimY_ - avatarLookY_) > 0.004f);
 
@@ -433,7 +439,7 @@ void App::PushAvatarState() {
     st.edge            = placementCfg_.edge;
     st.opacity         = 1.f;
     st.avatarHovered   = (hoveredId_ == "agent");
-    st.avatarAttention = avatarAttention_;
+    st.avatarMood      = avatarMood_;
     st.avatarLookX     = avatarLookX_;
     st.avatarLookY     = avatarLookY_;
     st.avatarBlink     = avatarBlink_;
@@ -448,6 +454,7 @@ void App::OnAvatarTick() {
 
     avatarLookX_ = Approach(avatarLookX_, avatarAimX_, dt, kGazeTauMs);
     avatarLookY_ = Approach(avatarLookY_, avatarAimY_, dt, kGazeTauMs);
+    avatarMood_  = Approach(avatarMood_, avatarAttention_ ? 1.f : 0.f, dt, kMoodTauMs);
 
     if (blinkStart_) {
         const float e = static_cast<float>(now - blinkStart_);
@@ -681,7 +688,8 @@ bool App::OnInternalAction(std::wstring_view name) {
         // permesso, utilizzo, azioni sulla selezione. Per ora si limita a
         // dimostrare che l'avatar riceve il click anche a barra chiusa.
         log::Info(L"avatar premuto (il pannello dell'agente arriva con la fase 4)");
-        avatarAttention_ = !avatarAttention_;   // provvisorio: mostra l'anello di richiamo
+        avatarAttention_ = !avatarAttention_;   // provvisorio: mostra l'espressione
+        EnsureAvatarTimer();
         Redraw();
         return true;
     }
@@ -807,7 +815,7 @@ void App::Redraw() {
     state.cursorAlong   = cursorAlong_;
     state.magnify       = magnify_;
     state.avatarHovered   = (hoveredId_ == "agent");
-    state.avatarAttention = avatarAttention_;
+    state.avatarMood      = avatarMood_;
     state.avatarLookX     = avatarLookX_;
     state.avatarLookY     = avatarLookY_;
     state.avatarBlink     = avatarBlink_;

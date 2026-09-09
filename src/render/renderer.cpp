@@ -143,7 +143,6 @@ void Renderer::ReleaseSurface() {
     dibBits_ = nullptr;
 
     avatarBrush_ = nullptr;
-    roundCap_    = nullptr;
     brush_       = nullptr;
     rt_          = nullptr;
     surface_     = nullptr;
@@ -477,30 +476,42 @@ void Renderer::FillProfile(const DrawState& state, float alongCenter, float alon
 
 // ── L'avatar ─────────────────────────────────────────────────────────────────
 //
-// Trenta punti di diametro sono pochi, e questo detta ogni scelta: niente bocca
-// (a questa scala diventa una macchia), niente naso, nessun dettaglio che a
-// 100 % di DPI finirebbe su meno di due pixel. Restano tre cose, e sono quelle
-// che bastano a leggere una faccia: il volume, gli occhi, le sopracciglia.
+// Un quadrato con gli angoli molto smussati, e dentro due soli occhi.
 //
-//  - Il VOLUME lo fa una sfumatura radiale con l'origine spostata in alto a
-//    sinistra. Senza, il disco resta un cerchio piatto e non una testa.
-//  - Gli OCCHI hanno un riflesso. E' un punto bianco di un punto e mezzo, e da
-//    solo fa la differenza fra due buchi e due occhi: e' il riflesso a dare
-//    l'impressione che siano bagnati, cioe' vivi.
-//  - Le SOPRACCIGLIA portano l'espressione. A questa scala gli occhi possono
-//    solo guardare e chiudersi; l'umore lo racconta l'inclinazione di due
-//    trattini.
+// Era un cerchio con le sopracciglia, e non funzionava per due motivi. La
+// forma tonda non c'entrava niente con il resto — la barra e' fatta di
+// rettangoli arrotondati, e in mezzo a quelli un cerchio si legge come una
+// cosa incollata da un'altra applicazione. E le sopracciglia, a trenta punti,
+// sono due trattini che a seconda di come cadono fanno sembrare la faccia
+// arrabbiata: troppo poco spazio per un dettaglio che porta cosi' tanto
+// significato.
+//
+// Adesso l'espressione la fanno solo gli occhi, ognuno con larghezza, altezza e
+// inclinazione proprie. E' lo stesso modello dei generatori di avatar
+// geometrici, e a questa scala e' l'unico che regge: un occhio piu' alto e
+// tondo legge come attenzione, uno piu' basso come calma, un'inclinazione
+// verso l'interno come domanda. Tre numeri per occhio, e nessun dettaglio che
+// al 100 % di DPI finisca su meno di due pixel.
 void Renderer::DrawAvatar(const ui::RectF& rect, const DrawState& state) {
     if (rect.empty() || !rt_) return;
 
-    const float r = std::min(rect.w, rect.h) * 0.5f;
+    const float side = std::min(rect.w, rect.h);
+    const float r    = side * 0.5f;
     const D2D1_POINT_2F c = D2D1::Point2F(rect.x + rect.w * 0.5f, rect.y + rect.h * 0.5f);
 
-    const float blink = std::clamp(state.avatarBlink, 0.f, 1.f);
-    const float lx    = std::clamp(state.avatarLookX, -1.f, 1.f) * r * 0.17f;
-    const float ly    = std::clamp(state.avatarLookY, -1.f, 1.f) * r * 0.15f;
+    const ui::RectF body{c.x - r, c.y - r, side, side};
 
-    // ── La sfera ──
+    // Il raggio: abbastanza da non essere un quadrato, poco da non essere un
+    // cerchio. A un terzo del lato la forma si legge come una piastrella —
+    // che e' il linguaggio di Windows — e sta in famiglia con la barra.
+    const float corner = side * 0.32f;
+
+    const float mood  = std::clamp(state.avatarMood, 0.f, 1.f);
+    const float blink = std::clamp(state.avatarBlink, 0.f, 1.f);
+    const float lx    = std::clamp(state.avatarLookX, -1.f, 1.f) * r * 0.16f;
+    const float ly    = std::clamp(state.avatarLookY, -1.f, 1.f) * r * 0.14f;
+
+    // ── Il corpo ──
     if (!avatarBrush_) {
         const D2D1_GRADIENT_STOP stops[] = {
             {0.f, D2D(theme_.avatarTop)},
@@ -514,101 +525,67 @@ void Renderer::DrawAvatar(const ui::RectF& rect, const DrawState& state) {
         }
     }
 
+    const D2D1_ROUNDED_RECT shape = D2D1::RoundedRect(Rect(body), corner, corner);
+
     if (avatarBrush_) {
         avatarBrush_->SetCenter(c);
-        avatarBrush_->SetRadiusX(r * 1.15f);
-        avatarBrush_->SetRadiusY(r * 1.15f);
-        // L'origine della luce, in alto a sinistra: e' cio' che trasforma un
-        // cerchio in una sfera.
-        avatarBrush_->SetGradientOriginOffset(D2D1::Point2F(-r * 0.42f, -r * 0.5f));
+        avatarBrush_->SetRadiusX(r * 1.35f);
+        avatarBrush_->SetRadiusY(r * 1.35f);
+        // L'origine della luce, in alto a sinistra: da' volume a una forma che
+        // altrimenti sarebbe una tessera piatta.
+        avatarBrush_->SetGradientOriginOffset(D2D1::Point2F(-r * 0.45f, -r * 0.52f));
         avatarBrush_->SetOpacity(contentAlpha_);
-        rt_->FillEllipse(D2D1::Ellipse(c, r, r), avatarBrush_.get());
+        rt_->FillRoundedRectangle(shape, avatarBrush_.get());
     } else {
-        rt_->FillEllipse(D2D1::Ellipse(c, r, r), Brush(theme_.avatarBottom));
+        rt_->FillRoundedRectangle(shape, Brush(theme_.avatarBottom));
     }
-
-    // Un filo di luce sul bordo in alto: stacca la testa dal fondo della barra
-    // senza disegnarci intorno un contorno, che la farebbe sembrare un adesivo.
-    rt_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(c.x, c.y - r * 0.06f), r - 0.6f, r - 0.6f),
-                     Brush(theme_.avatarTop.withAlpha(0.5f)), 1.f);
 
     // ── Gli occhi ──
-    const float eyeDx = r * 0.34f;
-    const float eyeDy = r * 0.06f;
-    const float eyeRx = std::max(1.5f, r * 0.155f);
-    const float eyeRy = std::max(0.4f, r * 0.20f * (1.f - blink * 0.94f));
-
-    for (int side = -1; side <= 1; side += 2) {
-        const float ex = c.x + eyeDx * static_cast<float>(side) + lx;
-        const float ey = c.y + eyeDy + ly;
-
-        rt_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(ex, ey), eyeRx, eyeRy),
-                         Brush(theme_.avatarEye));
-
-        // Il riflesso sparisce con la palpebra: un puntino bianco sospeso su un
-        // occhio chiuso e' la cosa che fa sembrare rotto tutto il resto.
-        if (blink < 0.45f) {
-            const float g = std::max(0.7f, eyeRx * 0.38f);
-            rt_->FillEllipse(
-                D2D1::Ellipse(D2D1::Point2F(ex - eyeRx * 0.34f, ey - eyeRy * 0.42f), g, g),
-                Brush(theme_.avatarGlint.withAlpha(theme_.avatarGlint.a * (1.f - blink * 2.2f))));
-        }
-    }
-
-    // ── Le sopracciglia ──
     //
-    // Sottili, alte e chiare. La prima versione le aveva spesse, dritte e
-    // vicine agli occhi: a quella distanza due barre orizzontali si leggono
-    // come un cipiglio, e la faccia sembrava arrabbiata a riposo. Sono anche
-    // arcuate — un arco, non un segmento — perche' un tratto rettilineo sopra
-    // un occhio tondo si vede subito che e' stato disegnato da un computer.
-    if (!roundCap_) {
-        d2dFactory_->CreateStrokeStyle(
-            D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND,
-                                        D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_ROUND),
-            nullptr, 0, roundCap_.put());
-    }
+    // Tre numeri per occhio. A riposo sono stretti e alti; con qualcosa da
+    // chiedere si allargano, si alzano e si inclinano verso l'interno.
+    const float eyeDx  = r * 0.33f;
+    const float eyeDy  = r * 0.04f - mood * r * 0.05f;
+    const float eyeW   = r * (0.26f + mood * 0.07f);
+    const float eyeH   = r * (0.40f + mood * 0.14f) * (1.f - blink * 0.95f);
+    const float tilt   = mood * 9.f;   // gradi, verso l'interno
 
-    // Con qualcosa da chiedere si alzano e si inclinano verso l'interno: e' la
-    // faccia di chi aspetta una risposta. A riposo restano quasi piatte.
-    const float browY     = c.y - r * 0.50f + ly * 0.55f;
-    const float browHalf  = r * 0.16f;
-    const float browArch  = state.avatarAttention ? r * 0.10f : r * 0.055f;
-    const float browTilt  = state.avatarAttention ? r * 0.10f : 0.f;
-    const float browLift  = state.avatarAttention ? r * 0.06f : 0.f;
-    const float browWidth = std::max(0.9f, r * 0.075f);
+    D2D1_MATRIX_3X2_F saved{};
+    rt_->GetTransform(&saved);
 
-    for (int side = -1; side <= 1; side += 2) {
-        const float bx = c.x + eyeDx * static_cast<float>(side) + lx * 0.55f;
-        const float y  = browY - browLift;
-        const float sf = static_cast<float>(side);
+    for (int side_i = -1; side_i <= 1; side_i += 2) {
+        const float sf = static_cast<float>(side_i);
+        const D2D1_POINT_2F e = D2D1::Point2F(c.x + eyeDx * sf + lx, c.y + eyeDy + ly);
 
-        const D2D1_POINT_2F inner = D2D1::Point2F(bx - browHalf * sf, y - browTilt);
-        const D2D1_POINT_2F outer = D2D1::Point2F(bx + browHalf * sf, y + browTilt * 0.3f);
-        const D2D1_POINT_2F ctrl  = D2D1::Point2F((inner.x + outer.x) * 0.5f,
-                                                  (inner.y + outer.y) * 0.5f - browArch);
+        rt_->SetTransform(D2D1::Matrix3x2F::Rotation(tilt * sf, e) * saved);
 
-        winrt::com_ptr<ID2D1PathGeometry> brow;
-        if (SUCCEEDED(d2dFactory_->CreatePathGeometry(brow.put()))) {
-            winrt::com_ptr<ID2D1GeometrySink> sink;
-            if (SUCCEEDED(brow->Open(sink.put()))) {
-                sink->BeginFigure(inner, D2D1_FIGURE_BEGIN_HOLLOW);
-                sink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(ctrl, outer));
-                sink->EndFigure(D2D1_FIGURE_END_OPEN);
-                if (SUCCEEDED(sink->Close())) {
-                    rt_->DrawGeometry(brow.get(), Brush(theme_.avatarEye.withAlpha(0.55f)),
-                                      browWidth, roundCap_.get());
-                }
-            }
+        const ui::RectF eye{e.x - eyeW * 0.5f, e.y - eyeH * 0.5f, eyeW, eyeH};
+        const float eyeR = std::min(eyeW, eyeH) * 0.5f;
+        rt_->FillRoundedRectangle(D2D1::RoundedRect(Rect(eye), eyeR, eyeR),
+                                  Brush(theme_.avatarEye));
+
+        // Il riflesso sparisce con la palpebra: un puntino sospeso su un occhio
+        // chiuso e' la cosa che fa sembrare rotto tutto il resto.
+        if (blink < 0.45f) {
+            const float g = std::max(0.7f, eyeW * 0.26f);
+            const float a = theme_.avatarGlint.a * (1.f - blink * 2.2f);
+            rt_->FillEllipse(
+                D2D1::Ellipse(D2D1::Point2F(e.x - eyeW * 0.20f, e.y - eyeH * 0.26f), g, g),
+                Brush(theme_.avatarGlint.withAlpha(a)));
         }
+
+        rt_->SetTransform(saved);
     }
 
     // ── L'anello di richiamo ──
-    if (state.avatarAttention) {
-        rt_->DrawEllipse(D2D1::Ellipse(c, r + 2.2f, r + 2.2f), Brush(theme_.accent), 2.f);
+    if (mood > 0.01f) {
+        const ui::RectF halo{body.x - 2.4f, body.y - 2.4f, body.w + 4.8f, body.h + 4.8f};
+        rt_->DrawRoundedRectangle(D2D1::RoundedRect(Rect(halo), corner + 2.4f, corner + 2.4f),
+                                  Brush(theme_.accent.withAlpha(mood)), 2.f);
     } else if (state.avatarHovered) {
-        rt_->DrawEllipse(D2D1::Ellipse(c, r + 2.f, r + 2.f),
-                         Brush(theme_.text.withAlpha(0.22f)), 1.4f);
+        const ui::RectF halo{body.x - 2.f, body.y - 2.f, body.w + 4.f, body.h + 4.f};
+        rt_->DrawRoundedRectangle(D2D1::RoundedRect(Rect(halo), corner + 2.f, corner + 2.f),
+                                  Brush(theme_.text.withAlpha(0.22f)), 1.4f);
     }
 }
 

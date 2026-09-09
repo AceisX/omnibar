@@ -76,7 +76,11 @@ struct DrawState {
     float avatarDiameter  = 30.f;
     float avatarMargin    = 24.f;   // distanza dalla fine della barra
     bool  avatarHovered   = false;
-    bool  avatarAttention = false;  // ha qualcosa da chiedere
+
+    // 0 = a riposo, 1 = ha qualcosa da chiedere. E' un continuo e non un
+    // booleano perche' il passaggio fra i due si anima: una faccia che cambia
+    // espressione di scatto non e' una faccia, e' due immagini.
+    float avatarMood      = 0.f;
 
     // Dove guarda, -1..1 sui due assi, gia' smorzato da App. Non e' la
     // direzione del cursore: e' dove l'occhio e' arrivato inseguendola. La
@@ -178,7 +182,6 @@ private:
     // Sfumatura della sfera e pennino a estremita' tonde per le sopracciglia:
     // si creano una volta e vivono quanto la superficie.
     winrt::com_ptr<ID2D1RadialGradientBrush> avatarBrush_;
-    winrt::com_ptr<ID2D1StrokeStyle>         roundCap_;
 
     winrt::com_ptr<IDWriteTextFormat> fmtText_;
     winrt::com_ptr<IDWriteTextFormat> fmtIcon_;
