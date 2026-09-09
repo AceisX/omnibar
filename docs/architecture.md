@@ -97,7 +97,8 @@ Requisiti, non speranze. La CI misura e fallisce se si sfora.
 
 | Metrica | Target | Note |
 |---|---|---|
-| RAM host a riposo, nessun modulo attivo | **< 25 MB** | private working set |
+| RAM host appena avviato | **< 10 MB** | misurato 4,2 MB |
+| RAM host a regime, nessun modulo attivo | **< 25 MB** | misurato ~17 MB dopo ore d'uso e decine di aperture, **stabile**: 17,02 → 16,94 MB su 12 aperture, handle invariati. Il numero appena avviato non e' il numero vero: le cache di Direct2D e DirectWrite si riempiono usandola |
 | RAM host a regime, moduli built-in attivi | **< 60 MB** | con sysmon, media, shelf |
 | CPU a riposo (barra nascosta) | **≤ 0,2 %** | misurato 0,10 % su 60 s, cursore lontano. Il contatore di Windows ha un quanto di 15,6 ms: sotto quella soglia la misura è rumore |
 | CPU durante l'animazione di apertura | < 2 % di un core | 0 % se il backend di composizione muove la visual |
