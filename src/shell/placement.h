@@ -31,7 +31,9 @@ struct PlacementConfig {
     // La linea sempre visibile sul bordo, e la sporgenza al suo centro.
     float lineDip      = 2.f;    // spessore della linea
     float nubThickDip  = 7.f;    // quanto sporge la sporgenza verso il centro
-    float nubLenDip    = 54.f;   // quanto e' lunga
+    // Piu' alta di prima: a cinquantaquattro punti si leggeva come un difetto
+    // della linea, non come una maniglia. Deve avere una lunghezza propria.
+    float nubLenDip    = 78.f;
 
     int   triggerPx    = 6;      // spessore della zona sensibile sul bordo
 };

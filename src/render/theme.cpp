@@ -39,7 +39,11 @@ ui::Metrics Theme::metrics() const {
     // sul bordo, non come una seconda taskbar: con un bottone da 30 punti e
     // sei di margine lo spessore totale sta in 42, meno di una riga di testo.
     ui::Metrics m;
-    m.padAlong     = 12.f;
+    // Il margine alle estremita' e' quasi il doppio di prima. Non allarga la
+    // barra: la fa cominciare piu' su e finire piu' giu' della prima e
+    // dell'ultima icona, che e' cio' che la fa sembrare un oggetto invece di
+    // una fila di bottoni con un contorno.
+    m.padAlong     = 22.f;
     m.padCross     = 7.f;
     m.buttonMin    = 30.f;
     m.buttonPadX   = 9.f;
