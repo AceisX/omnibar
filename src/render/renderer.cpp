@@ -363,108 +363,40 @@ void Renderer::DrawButtonLike(const ui::Widget& w, const DrawState& state) {
 }
 
 
-// ── Il profilo liquido ───────────────────────────────────────────────────────
+// Un rettangolo arrotondato appoggiato al bordo dello schermo.
 //
-// Si costruisce in coordinate (u, v): `u` corre lungo la barra, `v` attraverso,
-// misurata dal bordo dello schermo verso l'interno. In questo sistema i quattro
-// bordi sono lo stesso problema, e la trasformazione finale e' quattro righe
-// invece di quattro versioni della forma.
-//
-//   v = 0            il bordo dello schermo
-//   v = thickness    il fianco interno della barra: e' qui che nascono le gocce
-//   v > thickness    lo spazio in cui la goccia si allunga verso il cursore
-//
-// Gli angoli sono cubiche e non archi: una cubica con i controlli a 0,5523 del
-// raggio approssima un quarto di cerchio meglio di quanto si veda a schermo, e
-// non obbliga a ragionare sul verso di percorrenza degli archi.
-winrt::com_ptr<ID2D1PathGeometry> Renderer::BuildSilhouette(
-    const DrawState& state, float start, float along, float thickness, float radius) const {
-    constexpr float kArc = 0.5523f;
-
-    winrt::com_ptr<ID2D1PathGeometry> geo;
-    if (FAILED(d2dFactory_->CreatePathGeometry(geo.put()))) return nullptr;
-
-    winrt::com_ptr<ID2D1GeometrySink> sink;
-    if (FAILED(geo->Open(sink.put()))) return nullptr;
+// Il lato che guarda fuori si estende oltre la superficie: D2D lo ritaglia, e
+// restano arrotondati solo i due angoli che si vedono. Costa tre righe invece
+// di una path geometry, e vale per tutti e quattro i bordi perche' l'unica cosa
+// che cambia e' da che parte si estende.
+void Renderer::FillEdgeShape(const DrawState& state, float alongCenter, float alongLen,
+                             float thickness, float radius, const Color& fill, bool stroke) {
+    if (alongLen <= 0.f || thickness <= 0.f) return;
 
     const float w = static_cast<float>(widthPx_) * 96.f / static_cast<float>(dpi_);
     const float h = static_cast<float>(heightPx_) * 96.f / static_cast<float>(dpi_);
 
-    // (u, v) -> punto sulla superficie.
-    const Edge edge = state.edge;
-    auto P = [&](float u, float v) -> D2D1_POINT_2F {
-        switch (edge) {
-            case Edge::Right:  return D2D1::Point2F(w - v, u);
-            case Edge::Left:   return D2D1::Point2F(v, u);
-            case Edge::Bottom: return D2D1::Point2F(u, h - v);
-            case Edge::Top:    return D2D1::Point2F(u, v);
-        }
-        return D2D1::Point2F(u, v);
-    };
-    auto Bez = [&](float u1, float v1, float u2, float v2, float u3, float v3) {
-        sink->AddBezier(D2D1::BezierSegment(P(u1, v1), P(u2, v2), P(u3, v3)));
-    };
+    const bool  vertical = (state.edge == Edge::Left || state.edge == Edge::Right);
+    const float over     = radius + 1.f;
 
-    const float u0 = start;
-    const float u1 = start + along;
-
-    // Le gocce, ordinate e ritagliate perche' non escano dai raccordi e non si
-    // accavallino: due bolle sovrapposte darebbero un profilo che rientra su se
-    // stesso, e sembrerebbe un errore di disegno invece che del liquido.
-    struct Local { float u, a, w; };
-    Local drops[2];
-    int   n = 0;
-    float needed = 0.f;
-    for (int i = 0; i < state.bulgeCount && i < 2; ++i) {
-        const Bulge& b = state.bulges[i];
-        if (b.amount < 0.3f || b.width < 1.f) continue;
-        drops[n] = Local{b.along, b.amount, b.width};
-        needed += b.width * 2.f;
-        ++n;
-    }
-    if (n == 2 && drops[0].u > drops[1].u) std::swap(drops[0], drops[1]);
-
-    // Il raggio cede alla goccia, non il contrario. A riposo la pastiglia e'
-    // lunga una cinquantina di punti: con raccordi da venti, di bordo dritto su
-    // cui gonfiarsi ne restano sei, e la goccia non si vedrebbe mai. Stringendo
-    // i raccordi quando serve, la pastiglia si assottiglia alle estremita' e
-    // spinge in mezzo — che e' esattamente cio' che fa la tensione superficiale.
-    float r = std::min(radius, std::min(along, thickness) * 0.5f);
-    if (n > 0) r = std::min(r, std::max(3.f, (along - needed) * 0.5f));
-
-    const float lo = u0 + r;
-    const float hi = u1 - r;
-    float cursor = lo;
-
-    sink->BeginFigure(P(u0, thickness - r), D2D1_FIGURE_BEGIN_FILLED);
-    Bez(u0, thickness - r + r * kArc, u0 + r - r * kArc, thickness, u0 + r, thickness);
-
-    for (int i = 0; i < n; ++i) {
-        float bu = std::clamp(drops[i].u, lo, hi);
-        float bw = drops[i].w;
-
-        // Non deve sconfinare nei raccordi ne' nella goccia precedente.
-        bw = std::min(bw, std::min(bu - cursor, hi - bu));
-        if (bw < 2.f) continue;
-
-        const float a = drops[i].a;
-        sink->AddLine(P(bu - bw, thickness));
-        Bez(bu - bw * 0.45f, thickness, bu - bw * 0.30f, thickness + a, bu, thickness + a);
-        Bez(bu + bw * 0.30f, thickness + a, bu + bw * 0.45f, thickness, bu + bw, thickness);
-        cursor = bu + bw;
+    ui::RectF r;
+    if (vertical) {
+        r.y = alongCenter - alongLen * 0.5f;
+        r.h = alongLen;
+        r.w = thickness + over;
+        r.x = (state.edge == Edge::Right) ? (w - thickness) : (-over);
+    } else {
+        r.x = alongCenter - alongLen * 0.5f;
+        r.w = alongLen;
+        r.h = thickness + over;
+        r.y = (state.edge == Edge::Bottom) ? (h - thickness) : (-over);
     }
 
-    sink->AddLine(P(hi, thickness));
-    Bez(u1 - r + r * kArc, thickness, u1, thickness - r + r * kArc, u1, thickness - r);
-
-    // Il fianco esterno esce dalla superficie: D2D lo ritaglia, e restano
-    // arrotondati solo gli angoli che si vedono.
-    sink->AddLine(P(u1, -r - 2.f));
-    sink->AddLine(P(u0, -r - 2.f));
-    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
-
-    if (FAILED(sink->Close())) return nullptr;
-    return geo;
+    FillRounded(r, radius, fill);
+    if (stroke) {
+        const D2D1_ROUNDED_RECT rr = D2D1::RoundedRect(Rect(r), radius, radius);
+        rt_->DrawRoundedRectangle(rr, Brush(theme_.border), theme_.borderWidth);
+    }
 }
 
 void Renderer::DrawWidget(const ui::Widget& w, const DrawState& state) {
@@ -522,44 +454,37 @@ void Renderer::Draw(const ui::Widget& root, const DrawState& state) {
 
     rt_->BeginDraw();
     rt_->Clear(D2D1::ColorF(0, 0.f));
-
-    // Il corpo si disegna sempre pieno; solo il contenuto sfuma.
     contentAlpha_ = 1.f;
 
     const float w = static_cast<float>(widthPx_) * 96.f / static_cast<float>(dpi_);
     const float h = static_cast<float>(heightPx_) * 96.f / static_cast<float>(dpi_);
 
-    const bool vertical = (state.edge == Edge::Left || state.edge == Edge::Right);
-    const float full    = vertical ? h : w;
+    const bool  vertical = (state.edge == Edge::Left || state.edge == Edge::Right);
+    const float full     = vertical ? h : w;
+    const float center   = full * 0.5f;
 
-    // La lunghezza attuale della forma. A riposo e' la pastiglia corta, aperta
-    // e' tutta la superficie, e in mezzo ci sono tutti i valori intermedi: e'
-    // quella continuita' a far sembrare che la barra si allunghi invece di
-    // essere sostituita.
-    const float along = (state.shapeAlong > 0.f) ? std::clamp(state.shapeAlong, 8.f, full) : full;
+    const float t = std::clamp(state.openT, 0.f, 1.f);
 
-    // Lo spessore della superficie: barra piu' spazio per le gocce.
-    const float thickness = vertical ? w : h;
+    // 1. La linea. C'e' sempre, per tutto il bordo, e non si muove mai: e' lei
+    //    a dire che la barra esiste. Sotto il pannello sta comunque, e siccome
+    //    hanno lo stesso colore le due forme si fondono invece di sovrapporsi.
+    FillEdgeShape(state, center, full, state.lineDip, 0.f, theme_.background, false);
 
-    // Il centro della forma sulla superficie, limitato perche' non sbordi. A
-    // lunghezza piena il limite lo riporta da solo a meta': non serve un caso
-    // speciale per la barra aperta.
-    const float halfFrac = (along * 0.5f) / full;
-    const float center   = std::clamp(state.shapeCenter, halfFrac, 1.f - halfFrac);
-    const float start    = center * full - along * 0.5f;
+    // 2. Il pannello: a riposo la sporgenza, da aperto la barra. Una sola
+    //    interpolazione per spessore e lunghezza, cosi' non possono sfasarsi.
+    const float contentLen = (state.contentLenDip > 0.f)
+                                 ? std::min(state.contentLenDip, full)
+                                 : full;
+    const float thickness  = state.nubThickDip + (state.barThickDip - state.nubThickDip) * t;
+    const float alongLen   = state.nubLenDip + (contentLen - state.nubLenDip) * t;
 
-    // Lo spessore della barra vera. Cio' che avanza fino al bordo della
-    // superficie e' lo spazio in cui le gocce si allungano.
-    const float barThick = (state.barThickness > 0.f)
-                               ? std::min(state.barThickness, thickness)
-                               : thickness;
-    const float radius   = std::min(theme_.cornerRadius, std::min(along, barThick) * 0.5f);
+    // Il raggio segue il lato piu' corto: la sporgenza resta uno stadio, la
+    // barra aperta arriva al raggio del tema. Nessun caso speciale.
+    const float radius = std::min(theme_.cornerRadius, std::min(alongLen, thickness) * 0.5f);
 
-    if (auto geo = BuildSilhouette(state, start, along, barThick, radius)) {
-        rt_->FillGeometry(geo.get(), Brush(theme_.background));
-        rt_->DrawGeometry(geo.get(), Brush(theme_.border), theme_.borderWidth);
-    }
+    FillEdgeShape(state, center, alongLen, thickness, radius, theme_.background, true);
 
+    // 3. Il contenuto, quando c'e' spazio per contenerlo.
     if (state.contentAlpha > 0.01f) {
         contentAlpha_ = std::clamp(state.contentAlpha, 0.f, 1.f);
         DrawWidget(root, state);

@@ -50,7 +50,7 @@ target_link_options(omnibar PRIVATE
 # Tutto dal Windows SDK: nessuna dipendenza esterna per l'host (§ tabella §4).
 target_link_libraries(omnibar PRIVATE
     d2d1 dwrite windowscodecs
-    user32 shell32 shlwapi ole32 advapi32 shcore
+    user32 shell32 shlwapi ole32 advapi32 shcore winmm
 )
 
 set_target_properties(omnibar PROPERTIES

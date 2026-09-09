@@ -338,60 +338,61 @@ piccolo) le zone a priorità bassa collassano nell'overflow.
 | `Expanded` | un pannello più grande sopra la barra | grafici, shelf, liste |
 | `Suppressed` | niente, nemmeno la zona trigger | fullscreen esclusivo, presentazione, DND |
 
-### 8.1 · Il richiamo: la barra si muove prima di aprirsi
+### 8.1 · Una linea ferma che si apre
 
-A riposo la barra non sta ferma al centro del bordo. Entro ~190 punti dal bordo **insegue il
-cursore** scorrendo lungo di esso con uno smorzamento; entro ~80 punti **si allunga e sporge
-di un paio di pixel in più**. Poi, alla conferma, si apre.
+A riposo la barra è **una linea di due punti che corre per tutto il bordo**, con una piccola
+sporgenza arrotondata al centro. Non si muove. Al passaggio del cursore la sporgenza si apre
+nella barra, e richiudendosi torna sporgenza.
 
-Non è decorazione, è latenza percepita. L'apertura vera costa comunque un'attesa di conferma
-(§8.2) più l'animazione: sommate, sono un paio di decimi in cui senza il richiamo non
-succederebbe niente e la barra sembrerebbe lenta. Con il richiamo il riscontro è immediato —
-il movimento comincia mentre ti stai ancora avvicinando — e l'apertura diventa **la fine di un
-gesto invece del suo inizio**.
+Ci si è arrivati scartando due strade, e vale la pena scrivere perché:
 
-Due soglie e non una, per lo stesso motivo di §8.2: seguire da lontano è un accenno discreto,
-crescere da lontano sarebbe un'animazione che parte ogni volta che passi da quella parte dello
-schermo.
+- **La barra inseguiva il cursore** lungo il bordo, scorrendo per andargli incontro.
+- **Il profilo si gonfiava** in due gocce che seguivano il cursore con ritardi diversi.
 
-**Le gocce.** Il profilo della barra non è un rettangolo arrotondato: è una path geometry
-costruita in coordinate lungo/attraverso — così i quattro bordi sono lo stesso problema — il
-cui fianco interno si gonfia verso il cursore. Due rigonfiamenti, non uno, che inseguono la
-stessa meta con costanti di tempo diverse (45 e 150 ms): **è la differenza fra i due ritardi a
-leggersi come liquido**. Con un ritardo solo si vede una protuberanza agganciata al mouse.
+Entrambe erano fluide e nessuna delle due era giusta, per la stessa ragione: **un componente
+di sistema non si sposta.** Sta dov'è e cambia forma. Un oggetto che si muove verso di te
+chiede attenzione — va benissimo per una notifica, è sbagliato per una cosa che sta sul bordo
+dello schermo tutto il giorno. La barra deve essere trovabile, non insistente.
 
-Restano sempre attaccate — non sono forme a sé che si staccano, è il profilo che si allunga —
-perché è quello a leggersi come tensione superficiale. E più il cursore è vicino, più la goccia
-è alta e stretta: più la tiri, più si stringe.
+La linea fissa risolve anche il problema che la pastiglia corta aveva: si vedeva poco e non
+si capiva cosa fosse. Una linea che corre per tutto il bordo si legge subito come "qui c'è
+qualcosa", senza muoversi di un pixel.
 
-Due conseguenze non ovvie:
+**A riposo e da aperta si disegnano le stesse due cose** — la linea e un pannello arrotondato
+al suo centro — con misure diverse. Non c'è una forma che entra da fuori campo né una che ne
+sostituisce un'altra: c'è una cosa ferma che si apre. Una sola progressione governa spessore,
+lunghezza e comparsa delle icone, così non possono sfasarsi.
 
-- **La finestra è più spessa della barra.** I punti che avanzano davanti sono lo spazio in cui
-  la goccia si allunga. Senza, la forma occuperebbe tutta la superficie e Direct2D la
-  ritaglierebbe: la goccia non si vedrebbe mai. È superficie trasparente, quindi non copre
-  niente e non riceve click.
-- **Il raggio degli angoli cede alla goccia.** A riposo la pastiglia è lunga una cinquantina di
-  punti: con raccordi da venti, di bordo dritto su cui gonfiarsi ne restano sei. Quando una
-  goccia c'è, i raccordi si stringono — e il risultato è che la pastiglia si assottiglia alle
-  estremità e spinge in mezzo, che è esattamente ciò che fa la tensione superficiale.
+**Nessun oltrepasso nella curva.** C'era, e su un oggetto che entrava da fuori raccontava una
+massa; su un oggetto fermo che si apre non racconta niente e si legge come un tic.
 
-**Le icone si ingrandiscono** quando il cursore le sfiora, con una gaussiana su due bottoni di
-raggio. Con una differenza voluta rispetto alla dock del Mac: **cresce solo ciò che si vede, il
-rettangolo cliccabile resta dov'era.** Far muovere i bersagli sotto il cursore mentre lo si
-avvicina è il difetto per cui quell'effetto viene disattivato da metà delle persone che lo
-provano.
+### 8.1.1 · La fluidità è un problema di temporizzazione, non di grafica
 
-**A riposo e da aperta la forma disegnata è la stessa**, con una lunghezza diversa: una
-pastiglia corta che si allunga fino a diventare la barra, e le icone che compaiono quando c'è
-spazio per contenerle. Erano due disegni distinti — una linguetta, e poi la barra — e si
-vedeva: sembrava che la striscia restasse sotto e che a uscire fosse un'altra cosa. Una forma
-sola che cresce non ha quel salto, perché non c'è niente da sostituire.
+Perché il movimento sembrasse "forzato" c'era una causa misurabile, e non era la curva.
 
-Il polling del cursore è **adattivo**: 10 Hz lontano dal bordo, 125 Hz vicino, con isteresi
-sulla soglia. Con il solo passo lento, fra "il cursore arriva" e "la barra se ne accorge"
-potevano passare cento millisecondi, prima ancora che cominciasse l'attesa di conferma.
+L'animazione era guidata da `SetTimer` a 8 ms. **`SetTimer` non sa fare 8 ms:** è agganciato
+alla risoluzione del timer di sistema, di norma ~15,6 ms. I timestamp di un'apertura reale lo
+dicono senza margine di dubbio:
 
-### 8.2 · Perché il reveal è più difficile di quanto sembri
+```
+54.382 → 54.398 → 54.413 → 54.429 → 54.445 → 54.460      (16 ms, non 8)
+```
+
+Sessantadue fotogrammi al secondo, con spaziatura irregolare rispetto al refresh dello
+schermo. Nessuna curva, per quanto ben scelta, sopravvive a una sorgente che batte storto.
+
+La cura è alzare la risoluzione del timer con `timeBeginPeriod(1)` **solo per la durata
+dell'animazione** — tenerla alta sempre costerebbe batteria a un programma che sta acceso
+tutto il giorno.
+
+Resta un passo più avanti, se non bastasse: far **animare al compositore** invece che a noi
+(DirectComposition o Windows.UI.Composition). Lì l'interpolazione la fa il sistema sul proprio
+thread, in fase con il refresh, e non può saltare fotogrammi perché la nostra applicazione è
+occupata. Costa un device D3D — la cifra misurata da MiniBar è ~30 MB e una quindicina di
+thread — quindi si valuta **dopo** aver verificato che la temporizzazione corretta non basti.
+Ottimizzare il motore prima di aver sistemato l'orologio sarebbe stato lavoro sprecato.
+
+### 8.2 · Perché il reveal è più difficile di quanto sembri### 8.2 · Perché il reveal è più difficile di quanto sembri
 
 Tre problemi che decidono se la barra è piacevole o insopportabile dopo due giorni:
 

@@ -42,21 +42,14 @@ private:
     void OnTrayMenu(POINT screenPt);
     bool OnInternalAction(std::wstring_view name);
 
-    // ── Richiamo del cursore ──
-    // A riposo la barra non sta ferma al centro del bordo: segue il cursore che
-    // si avvicina e si allunga un po'. E' cio' che la fa sembrare viva prima
-    // ancora di aprirsi, e che rende l'apertura la fine di un movimento invece
-    // che il suo inizio.
-    void  UpdateAttraction(POINT cursor, float dtMs);
     float EdgeDistanceDip(POINT cursor) const;
-    int   CursorAlong(POINT cursor) const;
     void  SetCursorTick(UINT intervalMs);
 
     // ── Geometria e disegno ──
     void RefreshPlacement(bool force);
+    void ApplyPlacement();
     void Relayout();
     void Redraw();
-    void ApplySlide();
     void StartAnimation(float target);
 
     void BuildTree();
@@ -91,39 +84,26 @@ private:
     BarState state_  = BarState::Hidden;
     bool     pinned_ = false;
 
-    // Una sola progressione, 0 = chiusa e 1 = aperta, da cui discendono tutte e
-    // tre le cose che si muovono: quanto la finestra e' entrata, quanto la
-    // forma si e' allungata e quanto si vedono le icone. Tenerle separate
+    // Una sola progressione, 0 = riposo e 1 = aperta. Da qui discendono spessore
+    // e lunghezza del pannello e l'opacita' delle icone: tenerle separate
     // avrebbe voluto dire tre curve da mantenere in fase a mano.
-    float     slide_       = 0.f;
-    float     slideFrom_   = 0.f;
-    float     slideTarget_ = 0.f;
-    ULONGLONG animStart_   = 0;
-    bool      animating_   = false;
+    float     open_       = 0.f;
+    float     openFrom_   = 0.f;
+    float     openTarget_ = 0.f;
+    ULONGLONG animStart_  = 0;
+    bool      animating_  = false;
 
-    // Posizione lungo il bordo, in pixel: `along_` insegue `alongTarget_` con
-    // uno smorzamento, ed e' quello a dare la sensazione di liquido invece che
-    // di scatto.
-    float along_       = 0.f;
-    float alongTarget_ = 0.f;
+    // Risoluzione del timer alzata solo mentre qualcosa si muove. Vedi
+    // StartAnimation: `SetTimer` non sa fare meno di ~15,6 ms, e a quel passo
+    // l'animazione va a 62 fotogrammi al secondo con spaziatura irregolare —
+    // che e' cio' che si legge come movimento "forzato".
+    bool      timerBoosted_ = false;
 
-    float grow_        = 0.f;   // 0-1, quanto il cursore e' vicino al bordo
+    float cursorAlong_ = -1.f;  // cursore lungo la barra, in DIP; < 0 = non sopra
+    float magnify_     = 0.f;
+    float contentLen_  = 0.f;   // lunghezza della barra aperta, in DIP
 
-    // Le due gocce: stessa meta, ritardi diversi. E' la differenza fra i due
-    // inseguimenti a leggersi come liquido — con un ritardo solo si vede una
-    // protuberanza agganciata al mouse, con due si vede qualcosa che scorre.
-    float dropFast_ = 0.f;      // posizione lungo la superficie, in DIP
-    float dropSlow_ = 0.f;
-    float magnify_  = 0.f;      // 0-1, ingrandimento delle icone sotto il cursore
-    float cursorAlong_ = -1.f;  // cursore lungo la superficie, in DIP
-    float shapeCenter_ = 0.5f;  // dove sta la pastiglia sulla superficie
-    float drawnAlong_  = -1.f;  // ultima lunghezza disegnata: evita ridisegni inutili
-    float drawnCenter_ = -1.f;
-
-    RECT      lastRect_{};      // ultima posizione applicata: evita SetWindowPos inutili
     UINT      cursorTickMs_ = 0;
-    ULONGLONG lastTick_     = 0;
-
     ULONGLONG outsideSince_ = 0;  // da quando il cursore e' fuori dalla barra
 
     // La finestra che era in primo piano prima che l'utente toccasse la barra:

@@ -6,13 +6,13 @@
 // software: un device D3D11 costa ~30 MB e 15 thread, e non si ammortizza su
 // una superficie ridisegnata solo quando qualcosa cambia.
 //
-// L'animazione di apertura NON passa di qui: la barra scorre muovendo la
-// finestra con SetWindowPos, e una finestra layered che si sposta non ha
-// bisogno di ridisegnare la propria superficie. Lo slide costa quindi zero
-// ridisegni — che era il vantaggio principale che ci si aspettava dalla
-// composizione.
+// L'apertura passa tutta di qui: la finestra non si muove mai, cambia solo cio'
+// che ci viene disegnato dentro. Costa un ridisegno per fotogramma, ma la
+// superficie e' una striscia sottile e il disegno sono due rettangoli
+// arrotondati piu' una manciata di glifi.
 //
-// Nessun render loop: si disegna quando lo chiede App, mai altrimenti.
+// Nessun render loop: si disegna quando lo chiede App, mai altrimenti. A riposo
+// non si disegna affatto.
 #pragma once
 #include "render/theme.h"
 #include "ui/layout.h"
@@ -26,63 +26,40 @@
 
 namespace omni::render {
 
-// Cosa cambia da un frame all'altro senza cambiare l'albero: e' separato dai
-// widget apposta, cosi' l'hover non obbliga a ricostruire l'albero.
+// Cosa disegnare, questo fotogramma.
+//
+// A riposo e da aperta si disegnano LE STESSE DUE COSE, con misure diverse:
+// una linea sottile che corre per tutto il bordo — sempre, non si muove mai —
+// e un pannello arrotondato al suo centro, che a riposo e' una sporgenza di
+// pochi punti e da aperta e' la barra. Non c'e' una forma che entra da fuori e
+// nemmeno una che insegue il cursore: c'e' una cosa ferma che si apre.
 //
 // Hover e pressione si identificano per id, non per puntatore. Dalla fase 2
 // l'albero viene ricostruito a ogni cambio di contesto: un puntatore dentro
 // l'albero vecchio diventerebbe pendente nell'istante in cui cambia il
-// programma in primo piano, cioe' proprio mentre il mouse e' sulla barra. Un id
-// che non c'e' piu' semplicemente non corrisponde a niente.
-// Una goccia: un rigonfiamento del bordo interno della barra, verso il
-// cursore. Resta sempre attaccata — non e' una forma a se' che si stacca, e'
-// il profilo della barra che si allunga — perche' e' quello a leggersi come
-// tensione superficiale invece che come un'icona che vola.
-struct Bulge {
-    float along  = 0.f;   // dove sta, in DIP lungo la barra
-    float amount = 0.f;   // quanto sporge, in DIP
-    float width  = 26.f;  // semiampiezza: stretta = goccia tirata, larga = onda
-};
-
+// programma in primo piano, cioe' proprio mentre il mouse e' sulla barra.
 struct DrawState {
     std::string_view hovered;
     std::string_view pressed;
+    Edge             edge    = Edge::Right;
     float            opacity = 1.f;
-    Edge             edge    = Edge::Bottom;
 
-    // A riposo e a barra aperta si disegna LA STESSA FORMA, con una lunghezza
-    // diversa: una pastiglia corta che si allunga fino a diventare la barra.
-    // Erano due disegni distinti — una linguetta e poi la barra — e si vedeva:
-    // sembrava che la striscia restasse sotto e che a uscire fosse un'altra
-    // cosa. Una forma sola che cresce non ha quel salto, perche' non c'e'
-    // niente da sostituire.
-    //
-    // `shapeAlong` e' la lunghezza attuale in DIP; `contentAlpha` fa comparire
-    // le icone mentre la forma si allunga, perche' schiacciate dentro la
-    // pastiglia corta non avrebbero senso.
-    // `shapeCenter` e' dove sta il centro della forma sulla superficie, 0-1.
-    // Serve vicino alle estremita' dello schermo: li' la finestra non puo'
-    // scorrere oltre, e senza questo la pastiglia resterebbe indietro invece di
-    // stare sotto il cursore. Viene comunque limitato perche' la forma non esca
-    // dalla superficie, e a lunghezza piena si riduce da solo a 0,5.
-    float shapeAlong   = 0.f;   // 0 = usa tutta la lunghezza della superficie
-    float shapeCenter  = 0.5f;
-    float contentAlpha = 1.f;
+    // 0 = riposo, 1 = aperta. Da qui discendono spessore e lunghezza del
+    // pannello: una progressione sola, non tre da tenere in fase a mano.
+    float openT = 0.f;
 
-    // Lo spessore della sola barra e lo spazio davanti in cui le gocce possono
-    // sporgere. La superficie e' la somma dei due.
-    float barThickness = 0.f;   // 0 = tutta la superficie, nessuno spazio per le gocce
+    float lineDip       = 2.f;    // la linea sempre visibile
+    float nubThickDip   = 7.f;    // la sporgenza a riposo
+    float nubLenDip     = 54.f;
+    float barThickDip   = 44.f;   // il pannello da aperto
+    float contentLenDip = 0.f;    // 0 = tutta la lunghezza della superficie
 
-    // Due gocce e non una: la seconda insegue con piu' ritardo, e sono i due
-    // ritardi diversi a far sembrare che ci sia del liquido invece di una
-    // singola protuberanza agganciata al mouse.
-    Bulge bulges[2];
-    int   bulgeCount = 0;
+    float contentAlpha  = 1.f;
 
-    // Posizione del cursore lungo la barra, in DIP sulla superficie; < 0 se il
-    // cursore non e' sulla barra. Ingrandisce le icone vicine.
+    // Posizione del cursore lungo la barra, in DIP sulla superficie; < 0 se non
+    // ci sta sopra. Ingrandisce appena le icone vicine.
     float cursorAlong = -1.f;
-    float magnify     = 0.f;   // 0-1, quanto l'ingrandimento e' attivo
+    float magnify     = 0.f;
 };
 
 class Renderer {
@@ -123,12 +100,12 @@ private:
     bool CreateFormats();
     void Present(float opacity);
 
-    // Il profilo della barra, gocce comprese. Costruito in coordinate
-    // lungo/attraverso e poi trasformato: cosi' esiste una sola versione della
-    // forma invece di quattro, una per bordo.
-    winrt::com_ptr<ID2D1PathGeometry> BuildSilhouette(const DrawState& state,
-                                                      float start, float along,
-                                                      float thickness, float radius) const;
+    // Un rettangolo arrotondato appoggiato al bordo: il lato che guarda fuori
+    // dallo schermo si estende oltre la superficie e D2D lo ritaglia, cosi'
+    // restano arrotondati solo gli angoli che si vedono. Una funzione sola per
+    // tutti e quattro i bordi.
+    void FillEdgeShape(const DrawState& state, float alongCenter, float alongLen,
+                       float thickness, float radius, const Color& fill, bool stroke);
 
     void DrawWidget(const ui::Widget& w, const DrawState& state);
     float Magnification(const ui::Widget& w, const DrawState& state) const;
