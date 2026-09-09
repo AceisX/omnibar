@@ -18,18 +18,17 @@ non sono qualcosa da "sistemare alla fine".
 > provabile — nemmeno da chi lo scrive. Vedi [security.md §6](security.md).
 
 - [x] Repo, licenza MIT, CI GitHub Actions
-- [x] Toolchain portable in `tools\` (ereditata da MiniBar: MSVC, CMake, Ninja da pacchetti ufficiali)
+- [x] Toolchain portable in `tools\` (MSVC, CMake, Ninja da pacchetti ufficiali)
 - [x] CMake, preset locale (Ninja) e preset CI (Visual Studio), CRT statica
-- [x] Scheletro `core`: entry point, single-instance, message loop, logging
-- [ ] `core`: crash handler
-- [ ] `config`: parser TOML, schema, validazione con errori leggibili, hot-reload
+- [x] `core`: entry point, single-instance, message loop, logging con rotazione, percorsi
+      portable/`%APPDATA%`
 - [x] Il gate della CI sulla dimensione dell'eseguibile
+- [x] Ambiente di prova in Windows Sandbox (`tools\sandbox\`)
+- [ ] **`config`: parser TOML, schema, validazione con errori leggibili, hot-reload** ← in corso
+- [ ] `core`: crash handler
 - [ ] Il gate della CI su RAM e tempo di avvio
 - [ ] Template di issue e PR
 - [ ] **Firma del codice** — bloccante per provare su macchine con Smart App Control
-
-**Fatto quando:** `cmake --build` produce un `omnibar.exe` che parte, legge la configurazione,
-scrive un log e si chiude pulito.
 
 ---
 
@@ -38,36 +37,56 @@ scrive un log e si chiude pulito.
 **Collauda:** il layer UI e la macchina a stati del bordo. È la fase più importante di tutte:
 tutto il resto ci sta sopra.
 
-- [x] `shell`: finestra della barra, quattro bordi, DPI per-monitor, multi-monitor, tema chiaro/scuro
-- [x] Macchina a stati `Hidden → Revealed → Pinned` con scorrimento animato
-- [x] Richiamo del cursore a riposo, forma unica che si allunga, apertura in ~120 ms
-- [x] Profilo liquido: due gocce con ritardi diversi che seguono il cursore
-- [x] Ingrandimento delle icone al passaggio del cursore, con i bersagli fermi
-- [ ] Lo stato `Suppressed`
+**Forma e comportamento**
+
+- [x] `shell`: finestra sui quattro bordi, DPI per-monitor, multi-monitor, tema chiaro/scuro
+- [x] Macchina a stati `Hidden → Revealed → Pinned`
+- [x] La finestra non si muove mai: copre tutto il bordo, e ad aprirsi è ciò che ci si disegna
+- [x] Profilo continuo — linea sottile, spalle raccordate, pannello — come una figura sola
+- [x] Lunghezza automatica: la barra è lunga quanto il suo contenuto
 - [x] Zona trigger con soglia doppia tempo + distanza, isteresi in uscita
-- [ ] Esclusioni esplicite per hot corner e snap layout (oggi si usa solo l'area di lavoro)
+- [x] Polling del cursore adattivo (10 Hz lontano, 125 Hz vicino) con isteresi sulla soglia
+- [x] Animazione con risoluzione del timer alzata solo mentre serve
+- [ ] Gli stati `Peek` (superato: è una variante di disegno) e `Suppressed`
+- [ ] Esclusioni esplicite per hot corner e snap layout
 - [ ] Hotkey globale di apertura, navigazione completa da tastiera
-- [x] `render`: backend layered software (D2D + `UpdateLayeredWindow`), icone di sistema, temi chiaro/scuro
-- [x] `ui`: albero widget, layout flex, hit-test, animazioni
+
+**Disegno**
+
+- [x] `render`: Direct2D software + `UpdateLayeredWindow`, con ridisegno parziale e area sporca
+- [x] Temi chiaro e scuro come token, mai colori cablati nel disegno
+- [x] **Colori dalla personalizzazione di Windows**, con cambio a caldo
+- [x] Opacità sul fondo e non sulla finestra, così il contenuto resta pieno
+- [x] Icone come glifi di Segoe Fluent Icons, indirizzate per nome logico
+- [x] Modalità compatta sui bordi laterali: spariscono le etichette, restano le icone
+
+**Layer UI**
+
+- [x] `ui`: albero widget, motore di layout flex a due passate, hit-test, animazioni
+- [x] Vocabolario: `group`, `button`, `toggle`, `label`, `separator`, `spacer`, `badge`, `avatar`
+- [x] Hover e pressione identificati per id, non per puntatore
 - [ ] `ui`: provider UIAutomation
-- [x] Vocabolario v1 minimo: `group`, `button`, `toggle`, `label`, `separator`, `spacer`, `badge`
-- [x] `action`: `internal`, `keystroke`, `shell`, `url`, `macro` + controllo permessi
-- [ ] Estensioni **dichiarative** (TOML): il tier senza codice — **il prossimo passo**
+
+**Azioni e sistema**
+
+- [x] `action`: `internal`, `keystroke`, `shell`, `url`, `macro` + controllo dei permessi
 - [x] Tray, menu contestuale, autostart
+- [ ] **Estensioni dichiarative (TOML): il tier senza codice** ← subito dopo il parser
+
+**Qualità**
+
 - [ ] **Simulatore**: la barra in una finestra normale con contesti finti
 - [ ] Golden-image test dei widget
 
-Verificato finora: tutti e quattro i bordi, tema chiaro e tema scuro, DPI 96, lunghezza
-adattata al contenuto, curva di apertura misurata (oltrepasso di 2 px a ~170 ms, rientro a
-~295 ms). A riposo: 4,2 MB e 0 ms di CPU su 15 secondi.
+Verificato a schermo: tutti e quattro i bordi, tema chiaro e scuro, DPI 96, lunghezza adattata
+al contenuto, apertura e chiusura, click, menu del tray. A riposo: 4,7 MB e 0 ms di CPU su 45
+secondi; a regime ~17 MB, stabile.
 
-Le azioni `keystroke` e `shell` compilano ed esistono, ma non sono ancora state provate su un
-bersaglio reale: lo saranno con i primi profili dichiarativi. Hover e pressione non sono
-ancora stati provati col mouse — l'ambiente di sviluppo non puo' muovere il cursore, ed e'
-anche il motivo per cui il simulatore in elenco non e' un lusso.
+Le azioni `keystroke` e `shell` compilano ed esistono ma non sono ancora state provate su un
+bersaglio reale: lo saranno con i primi profili dichiarativi.
 
 **Fatto quando:** si può scrivere un TOML con dei bottoni, salvarlo, e avere una barra che si
-apre sul bordo e li esegue. **Questa fase è già un prodotto spedibile.**
+apre sul bordo e li esegue.
 
 ---
 
@@ -117,9 +136,9 @@ il drag&drop.
 - [ ] `localapi`: named pipe + HTTP su loopback, con autenticazione di sessione
 - [ ] CLI `omnibar` (`ask`, `notify`, `tag`, `profile`)
 - [ ] Widget `prompt` e stato `Attention` con timeout e default sicuro
-- [x] Lo *slot* dell'avatar: posizione fissa, sempre tondo, premibile anche a barra chiusa
-- [ ] Il disegnatore dell'avatar in Direct2D, da una definizione di forme (§13.3) — **mai**
-      codice AGPL nel binario
+- [x] **L'agente**: ultimo slot della barra, disegnato in Direct2D, segue il cursore con la
+      testa e con gli occhi, sbatte le ciglia, e cliccandolo si mette in silenzio (§13.3)
+- [ ] Le altre espressioni: "sta pensando", "fatto", "qualcosa non va"
 - [ ] Hook `PreToolUse` per Claude Code: approvazioni sulla barra (§13.1)
 - [ ] Regole "Sempre" visibili e revocabili dalle impostazioni
 - [ ] `UsageProvider`: `claude-code-local`, e gli altri dietro configurazione (§13.2)
@@ -156,9 +175,11 @@ a nessuno.
 
 **Collauda:** che sia installabile e usabile da chi non legge documentazione.
 
-- [ ] Editor visuale dei profili — processo separato, avviato su richiesta. La scelta fra
-      nativo e WebView2 si fa **qui**, quando si sa quanto è complesso davvero: fino a questo
-      punto le due strade sono identiche
+- [ ] Editor visuale dei profili — processo separato, avviato su richiesta. Deve coprire i
+      quattro requisiti di [architettura §7.4](architecture.md): stile, contenuto per
+      applicazione, distinzione fra fissi e contestuali, e il fatto che **l'utente normale non
+      debba mai aprire il TOML**. La scelta fra nativo e WebView2 si fa **qui**, quando si sa
+      quanto è complesso davvero: fino a questo punto le due strade sono identiche
 - [ ] Prima esecuzione guidata: bordo, profili suggeriti in base ai programmi installati
 - [ ] Installer, winget, scoop
 - [ ] `omnibar-helper.exe` elevato, opzionale, con la sua revisione di sicurezza

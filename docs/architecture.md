@@ -315,6 +315,66 @@ piccolo) le zone a priorità bassa collassano nell'overflow.
 
 ---
 
+## 7.4 · Il modello di personalizzazione
+
+Quattro requisiti, e non sono desideri: decidono la forma della configurazione, del parser e
+dell'editor. Vanno tenuti presenti da qui in avanti, perché sono facili da rispettare adesso e
+molto costosi da recuperare dopo.
+
+### 1 · Lo stile è dell'utente
+
+Colori, opacità, spessore, raggi, bordo, lunghezza, dimensione delle icone: tutto
+sovrascrivibile. I nostri valori sono **default**, non decisioni.
+
+Il colore di partenza arriva già dalla personalizzazione di Windows (§13.3), che è il modo
+giusto di avere un default: non è una nostra scelta imposta a tutti, è la scelta che l'utente
+ha già fatto altrove.
+
+### 2 · Il contenuto è dell'utente, per ogni applicazione
+
+Si può decidere cosa c'è nella barra **di default** e cosa c'è **per ogni singolo programma**.
+E si può scegliere fra tre modi, per ciascun programma:
+
+| Modo | Cosa succede |
+|---|---|
+| **Esplicito** | l'utente elenca i widget per quel programma |
+| **Uno per tutti** | nessuna barra per-programma: vale sempre quella di default |
+| **Automatico** | il sistema propone da sé i widget, leggendo comandi e scorciatoie dell'app (§10.2) |
+
+Il terzo modo è ciò che rende utile la barra su un programma che nessuno ha mai adattato, ed è
+il motivo per cui il provider generico viene **prima** degli adapter e non dopo.
+
+### 3 · Fisso e contestuale restano distinti, e la linea la traccia l'utente
+
+Ci sono due categorie di widget, e non devono mai confondersi:
+
+- **fissi** — ci sono sempre, qualunque programma tu stia usando (media, volume, sistema,
+  l'agente);
+- **contestuali** — cambiano con il programma in primo piano.
+
+La barra li tiene in zone diverse (§7.3) proprio per questo. Ma **quali** widget stiano
+nell'una o nell'altra lo decide l'utente: un widget non è fisso o contestuale per natura, lo è
+per scelta. Chi vuole gli strumenti di Photoshop sempre disponibili deve poterli inchiodare
+nella zona fissa, e chi non vuole vedere il volume quando gioca deve poterlo togliere.
+
+Perché la distinzione conti davvero, deve **vedersi**: la zona che cambia e quella che resta
+non possono sembrare la stessa cosa, altrimenti a ogni cambio di programma sembra che la barra
+si sia riorganizzata da sola.
+
+### 4 · Si configura da una finestra, non da un file
+
+Il file TOML è il formato, non l'interfaccia. Deve restare leggibile e scrivibile a mano —
+serve a chi vuole versionare i propri profili o generarli da uno script — ma **l'utente normale
+non deve mai aprirlo**.
+
+La finestra di configurazione è la fase 6, e viene per ultima di proposito: si progetta bene
+solo quando si sa cosa c'è davvero da configurare. Ma la configurazione va progettata **da
+subito** come se quell'editor esistesse già, perché un formato pensato solo per essere scritto
+a mano è un formato che l'editor poi non riesce a modificare senza distruggere i commenti e
+l'ordine.
+
+---
+
 ## 8 · La macchina a stati della barra
 
 ```
