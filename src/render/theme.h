@@ -38,6 +38,16 @@ struct Theme {
     Color accentText;    // testo sopra l'accento
     Color separator;
 
+    // L'avatar. E' l'unico punto di colore della barra, ed e' voluto: fra icone
+    // tutte monocrome, una faccia colorata si legge come qualcuno invece che
+    // come l'ennesimo comando. Due tinte per la sfera piu' l'occhio e il
+    // riflesso; non seguono il tema chiaro/scuro perche' non sono interfaccia,
+    // sono un personaggio.
+    Color avatarTop;
+    Color avatarBottom;
+    Color avatarEye;
+    Color avatarGlint;
+
     // Quasi la meta' dello spessore: il lato rivolto verso lo schermo diventa
     // una semicirconferenza e la barra si legge come una pastiglia appoggiata
     // al bordo, non come un pannello incastrato.

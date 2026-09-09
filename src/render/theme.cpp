@@ -15,6 +15,10 @@ Theme Theme::Dark() {
     t.accent       = Color::Rgb(0x4CC2FF);
     t.accentText   = Color::Rgb(0x0A0A0A);
     t.separator    = Color::Rgb(0xFFFFFF, 0.12f);
+    t.avatarTop    = Color::Rgb(0xF6BE96);
+    t.avatarBottom = Color::Rgb(0xD1734A);
+    t.avatarEye    = Color::Rgb(0x2A1A12);
+    t.avatarGlint  = Color::Rgb(0xFFFFFF, 0.85f);
     return t;
 }
 
@@ -31,6 +35,10 @@ Theme Theme::Light() {
     t.accent       = Color::Rgb(0x005FB8);
     t.accentText   = Color::Rgb(0xFFFFFF);
     t.separator    = Color::Rgb(0x000000, 0.13f);
+    t.avatarTop    = Color::Rgb(0xF6BE96);
+    t.avatarBottom = Color::Rgb(0xD1734A);
+    t.avatarEye    = Color::Rgb(0x2A1A12);
+    t.avatarGlint  = Color::Rgb(0xFFFFFF, 0.85f);
     return t;
 }
 

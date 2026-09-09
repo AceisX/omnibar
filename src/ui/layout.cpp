@@ -34,6 +34,12 @@ SizeF Measure(const Widget& w, const Metrics& m) {
             return {tw, m.iconSize + 4.f};
         }
 
+        case WidgetType::Avatar:
+            // Uno slot quadrato come gli altri: un elemento piu' grande
+            // spezzerebbe il ritmo della colonna, e il ritmo e' cio' che fa
+            // sembrare la barra una cosa sola.
+            return {m.buttonMin, m.buttonMin};
+
         case WidgetType::Button:
         case WidgetType::Toggle: {
             const bool hasIcon  = !w.icon.empty();

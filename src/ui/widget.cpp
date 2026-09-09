@@ -62,6 +62,15 @@ Widget Spacer(float size) {
     return w;
 }
 
+Widget Avatar(std::string id, Action action) {
+    Widget w;
+    w.type    = WidgetType::Avatar;
+    w.id      = std::move(id);
+    w.tooltip = L"Assistente";
+    w.action  = std::move(action);
+    return w;
+}
+
 Action Internal(std::wstring name) {
     Action a;
     a.kind = ActionKind::Internal;

@@ -17,11 +17,6 @@ namespace omni {
 namespace {
 
 // Il polling del cursore e' adattivo. Lontano dal bordo bastano 10 Hz — due
-// syscall, invisibili. Vicino al bordo si sale a 125 Hz, perche' li' ogni tick
-// perso e' latenza percepita: con il solo passo lento, fra "il cursore arriva"
-// e "la barra se ne accorge" potevano passare cento millisecondi, prima ancora
-// che cominciasse l'attesa di conferma.
-// Il polling del cursore e' adattivo. Lontano dal bordo bastano 10 Hz — due
 // syscall, invisibili. Vicino al bordo si sale, perche' li' ogni tick perso e'
 // latenza percepita.
 constexpr UINT kSlowTickMs = 100;
@@ -389,9 +384,14 @@ void App::AvatarAimAt(POINT cursor) {
 }
 
 void App::EnsureAvatarTimer() {
-    const bool inMovimento = blinkStart_ != 0 ||
-                             std::fabs(avatarAimX_ - avatarLookX_) > 0.004f ||
-                             std::fabs(avatarAimY_ - avatarLookY_) > 0.004f;
+    // A barra chiusa l'avatar non si vede: gli occhi possono restare fermi.
+    // Quando riapre, lo sguardo e' gia' puntato dove serve perche' la meta'
+    // continua ad aggiornarsi comunque.
+    const bool visibile = (open_ >= 0.99f);
+    const bool inMovimento = visibile &&
+                             (blinkStart_ != 0 ||
+                              std::fabs(avatarAimX_ - avatarLookX_) > 0.004f ||
+                              std::fabs(avatarAimY_ - avatarLookY_) > 0.004f);
 
     if (inMovimento == avatarTimerOn_) return;
     avatarTimerOn_ = inMovimento;
@@ -415,15 +415,22 @@ void App::ScheduleBlink() {
 void App::PushAvatarState() {
     if (!renderer_.Valid() || !placement_.valid()) return;
 
+    // Solo a barra aperta: chiusa, l'avatar non si vede e ridisegnarlo sarebbe
+    // lavoro per nessuno.
+    if (open_ < 0.99f) return;
+
+    const ui::Widget* av = ui::Find(root_, "agent");
+    if (!av || av->rect.empty()) return;
+
     render::DrawState st;
     st.edge            = placementCfg_.edge;
     st.opacity         = 1.f;
-    st.avatarHovered   = avatarHovered_;
+    st.avatarHovered   = (hoveredId_ == "agent");
     st.avatarAttention = avatarAttention_;
     st.avatarLookX     = avatarLookX_;
     st.avatarLookY     = avatarLookY_;
     st.avatarBlink     = avatarBlink_;
-    renderer_.RedrawAvatar(st);
+    renderer_.RedrawAvatar(av->rect, st);
 }
 
 void App::OnAvatarTick() {
@@ -455,16 +462,14 @@ void App::OnAvatarTick() {
 RECT App::AvatarScreenRect() const {
     if (!placement_.valid()) return RECT{};
 
-    render::DrawState probe;
-    probe.edge = placementCfg_.edge;
-    const ui::RectF r = renderer_.AvatarRect(probe);
-    if (r.empty()) return RECT{};
+    const ui::Widget* av = ui::Find(root_, "agent");
+    if (!av || av->rect.empty()) return RECT{};
 
     const float scale = static_cast<float>(placement_.dpi ? placement_.dpi : 96) / 96.f;
-    return RECT{placement_.rect.left + static_cast<LONG>(r.x * scale),
-                placement_.rect.top  + static_cast<LONG>(r.y * scale),
-                placement_.rect.left + static_cast<LONG>(r.right()  * scale),
-                placement_.rect.top  + static_cast<LONG>(r.bottom() * scale)};
+    return RECT{placement_.rect.left + static_cast<LONG>(av->rect.x * scale),
+                placement_.rect.top  + static_cast<LONG>(av->rect.y * scale),
+                placement_.rect.left + static_cast<LONG>(av->rect.right()  * scale),
+                placement_.rect.top  + static_cast<LONG>(av->rect.bottom() * scale)};
 }
 
 void App::OnCursorTick() {
@@ -492,22 +497,10 @@ void App::OnCursorTick() {
         const bool atEdge  = wasFast ? (dist < kNearEdgeDip * 1.3f) : (dist < kNearEdgeDip);
         SetCursorTick(atEdge ? kFastTickMs : kSlowTickMs);
 
-        // L'avatar si vede anche a riposo, quindi deve poter essere premuto
-        // anche a riposo. La finestra pero' e' click-through: si toglie il
-        // click-through solo mentre il cursore e' effettivamente sopra di lui,
-        // cosi' il resto del bordo continua a lasciar passare tutto.
-        const RECT av = AvatarScreenRect();
-        const bool onAvatar = (av.right > av.left) && PointIn(av, cursor);
-        if (onAvatar != avatarHovered_) {
-            avatarHovered_ = onAvatar;
-            shell::SetClickThrough(hwnd_, !onAvatar);
-            Redraw();
-        }
-
-        // A parte quello, a riposo non si ridisegna nulla: la linea e la
-        // sporgenza non si muovono. Prima la barra inseguiva il cursore e
-        // ridisegnava di continuo — quel movimento e' proprio cio' che
-        // stonava, e toglierlo ha tolto anche il costo.
+        // A riposo non si ridisegna nulla: la linea e la sporgenza non si
+        // muovono, e l'avatar sta dentro la barra, che e' chiusa. Prima la
+        // barra inseguiva il cursore e ridisegnava di continuo — quel movimento
+        // e' proprio cio' che stonava, e toglierlo ha tolto anche il costo.
         if (trigger_.Update(PointIn(placement_.trigger, cursor), cursor, now)) Reveal();
         return;
     }
@@ -585,19 +578,6 @@ void App::OnMouseMove(POINT clientPx) {
 }
 
 void App::OnMouseDown(POINT clientPx) {
-    POINT screen = clientPx;
-    ClientToScreen(hwnd_, &screen);
-    const RECT av = AvatarScreenRect();
-    if (av.right > av.left && PointIn(av, screen)) {
-        // L'avatar non sta nell'albero dei widget: non appartiene a nessun
-        // profilo e non cambia mai, quindi non ha senso farlo passare per il
-        // layout insieme a cose che cambiano a ogni applicazione.
-        pressedId_ = "avatar";
-        SetCapture(hwnd_);
-        Redraw();
-        return;
-    }
-
     const ui::RectF pt = ToDip(clientPx);
     const ui::Widget* hit = ui::HitTest(root_, pt.x, pt.y);
     pressedId_ = hit ? hit->id : std::string{};
@@ -611,15 +591,6 @@ void App::OnMouseUp(POINT clientPx) {
     if (pressedId_.empty()) return;
     ReleaseCapture();
 
-    if (pressedId_ == "avatar") {
-        pressedId_.clear();
-        POINT screen = clientPx;
-        ClientToScreen(hwnd_, &screen);
-        const RECT av = AvatarScreenRect();
-        if (av.right > av.left && PointIn(av, screen)) OnInternalAction(L"ai.panel");
-        Redraw();
-        return;
-    }
 
     const ui::RectF pt = ToDip(clientPx);
     const ui::Widget* hit = ui::HitTest(root_, pt.x, pt.y);
@@ -828,7 +799,7 @@ void App::Redraw() {
     state.contentAlpha  = SmoothStep(0.55f, 0.98f, open_);
     state.cursorAlong   = cursorAlong_;
     state.magnify       = magnify_;
-    state.avatarHovered   = avatarHovered_;
+    state.avatarHovered   = (hoveredId_ == "agent");
     state.avatarAttention = avatarAttention_;
     state.avatarLookX     = avatarLookX_;
     state.avatarLookY     = avatarLookY_;
@@ -895,6 +866,12 @@ void App::BuildTree() {
         Button("demo.play",   L"play",   L"Riproduci",  Internal(L"demo.noop")),
         Toggle("bar.pin",     L"pin",    L"Tieni aperta", false, Internal(L"bar.pin")),
         Button("bar.menu",    L"settings", L"Menu",       Internal(L"bar.menu")),
+
+        // L'agente sta in fondo, ultimo slot, sempre. E' il posto piu' stabile
+        // della barra: tutto quello che sta sopra cambia col programma in
+        // primo piano, lui no. Una cosa che chiede permesso deve stare sempre
+        // dove uno se l'aspetta.
+        Avatar("agent", Internal(L"ai.panel")),
     });
     root_.align = ui::Align::Center;
 

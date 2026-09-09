@@ -122,19 +122,13 @@ public:
     // costerebbe centottanta kilobyte a fotogramma per un disegno che ne cambia
     // tre — e a quel prezzo un avatar che segue il cursore non e' un dettaglio
     // simpatico, e' una barra che consuma.
-    void RedrawAvatar(const DrawState& state);
+    void RedrawAvatar(const ui::RectF& rect, const DrawState& state);
 
     // Ripresenta la superficie gia' disegnata con un'opacita' diversa. Serve
     // alla dissolvenza durante lo scorrimento: la barra non cambia, cambia solo
     // quanto si vede, e rifare tutto il disegno per una moltiplicazione
     // sull'alpha sarebbe lavoro buttato.
     void Repaint(float opacity);
-
-    // Il rettangolo dell'avatar in DIP sulla superficie, vuoto se non va
-    // disegnato. Pubblico perche' serve anche all'hit-test di App, e due
-    // calcoli separati della stessa geometria sono due calcoli che prima o poi
-    // divergono.
-    ui::RectF AvatarRect(const DrawState& state) const;
 
 private:
     bool CreateSurface();
@@ -149,7 +143,7 @@ private:
     void FillProfile(const DrawState& state, float alongCenter, float alongLen,
                      float thickness, float lineThick);
 
-    void DrawAvatar(const DrawState& state);
+    void DrawAvatar(const ui::RectF& rect, const DrawState& state);
 
     void DrawWidget(const ui::Widget& w, const DrawState& state);
     float Magnification(const ui::Widget& w, const DrawState& state) const;
@@ -179,7 +173,12 @@ private:
 
     winrt::com_ptr<IWICBitmap>           surface_;
     winrt::com_ptr<ID2D1RenderTarget>    rt_;
-    winrt::com_ptr<ID2D1SolidColorBrush> brush_;
+    winrt::com_ptr<ID2D1SolidColorBrush>   brush_;
+
+    // Sfumatura della sfera e pennino a estremita' tonde per le sopracciglia:
+    // si creano una volta e vivono quanto la superficie.
+    winrt::com_ptr<ID2D1RadialGradientBrush> avatarBrush_;
+    winrt::com_ptr<ID2D1StrokeStyle>         roundCap_;
 
     winrt::com_ptr<IDWriteTextFormat> fmtText_;
     winrt::com_ptr<IDWriteTextFormat> fmtIcon_;

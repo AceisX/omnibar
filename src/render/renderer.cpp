@@ -142,9 +142,11 @@ void Renderer::ReleaseSurface() {
     oldBmp_  = nullptr;
     dibBits_ = nullptr;
 
-    brush_   = nullptr;
-    rt_      = nullptr;
-    surface_ = nullptr;
+    avatarBrush_ = nullptr;
+    roundCap_    = nullptr;
+    brush_       = nullptr;
+    rt_          = nullptr;
+    surface_     = nullptr;
 }
 
 bool Renderer::Resize(UINT widthPx, UINT heightPx, UINT dpi) {
@@ -473,82 +475,195 @@ void Renderer::FillProfile(const DrawState& state, float alongCenter, float alon
     rt_->DrawGeometry(geo.get(), Brush(theme_.border), theme_.borderWidth);
 }
 
-ui::RectF Renderer::AvatarRect(const DrawState& state) const {
-    if (!state.avatarShown) return {};
+// ── L'avatar ─────────────────────────────────────────────────────────────────
+//
+// Trenta punti di diametro sono pochi, e questo detta ogni scelta: niente bocca
+// (a questa scala diventa una macchia), niente naso, nessun dettaglio che a
+// 100 % di DPI finirebbe su meno di due pixel. Restano tre cose, e sono quelle
+// che bastano a leggere una faccia: il volume, gli occhi, le sopracciglia.
+//
+//  - Il VOLUME lo fa una sfumatura radiale con l'origine spostata in alto a
+//    sinistra. Senza, il disco resta un cerchio piatto e non una testa.
+//  - Gli OCCHI hanno un riflesso. E' un punto bianco di un punto e mezzo, e da
+//    solo fa la differenza fra due buchi e due occhi: e' il riflesso a dare
+//    l'impressione che siano bagnati, cioe' vivi.
+//  - Le SOPRACCIGLIA portano l'espressione. A questa scala gli occhi possono
+//    solo guardare e chiudersi; l'umore lo racconta l'inclinazione di due
+//    trattini.
+void Renderer::DrawAvatar(const ui::RectF& rect, const DrawState& state) {
+    if (rect.empty() || !rt_) return;
 
-    const float w = static_cast<float>(widthPx_) * 96.f / static_cast<float>(dpi_);
-    const float h = static_cast<float>(heightPx_) * 96.f / static_cast<float>(dpi_);
+    const float r = std::min(rect.w, rect.h) * 0.5f;
+    const D2D1_POINT_2F c = D2D1::Point2F(rect.x + rect.w * 0.5f, rect.y + rect.h * 0.5f);
 
-    const bool  vertical = (state.edge == Edge::Left || state.edge == Edge::Right);
-    const float full     = vertical ? h : w;
-    const float across   = vertical ? w : h;
-    const float d        = state.avatarDiameter;
-    if (d <= 0.f || full < d + state.avatarMargin) return {};
+    const float blink = std::clamp(state.avatarBlink, 0.f, 1.f);
+    const float lx    = std::clamp(state.avatarLookX, -1.f, 1.f) * r * 0.17f;
+    const float ly    = std::clamp(state.avatarLookY, -1.f, 1.f) * r * 0.15f;
 
-    // Centrato nello spessore della barra, cosi' resta un cerchio intero e non
-    // una mezzaluna appoggiata al bordo dello schermo.
-    const float acrossPos = (across - d) * 0.5f;
-
-    // "In fondo": l'estremita' lontana dall'origine dello schermo. Su un bordo
-    // laterale e' in basso, su uno orizzontale e' a destra.
-    const float alongPos = full - state.avatarMargin - d;
-
-    return vertical ? ui::RectF{acrossPos, alongPos, d, d}
-                    : ui::RectF{alongPos, acrossPos, d, d};
-}
-
-void Renderer::DrawAvatar(const DrawState& state) {
-    const ui::RectF r = AvatarRect(state);
-    if (r.empty()) return;
-
-    const float radius = r.w * 0.5f;
-    const D2D1_POINT_2F c = D2D1::Point2F(r.x + radius, r.y + radius);
-
-    // Il disco. Stesso fondo della barra: l'avatar e' parte della barra, non un
-    // oggetto appoggiato sopra.
-    rt_->FillEllipse(D2D1::Ellipse(c, radius, radius), Brush(theme_.background));
-
-    // L'anello. Normalmente e' il bordo della barra; quando c'e' qualcosa da
-    // decidere diventa l'accento e si ispessisce — e' l'unico segnale che deve
-    // funzionare con la coda dell'occhio, quindi non e' affidato a un pallino
-    // di sei pixel.
-    const Color ring  = state.avatarAttention ? theme_.accent : theme_.border;
-    const float width = state.avatarAttention ? 2.4f : theme_.borderWidth;
-    rt_->DrawEllipse(D2D1::Ellipse(c, radius - width * 0.5f, radius - width * 0.5f),
-                     Brush(ring), width);
-
-    if (state.avatarHovered) {
-        rt_->FillEllipse(D2D1::Ellipse(c, radius - width, radius - width), Brush(theme_.hover));
+    // ── La sfera ──
+    if (!avatarBrush_) {
+        const D2D1_GRADIENT_STOP stops[] = {
+            {0.f, D2D(theme_.avatarTop)},
+            {1.f, D2D(theme_.avatarBottom)},
+        };
+        winrt::com_ptr<ID2D1GradientStopCollection> coll;
+        if (SUCCEEDED(rt_->CreateGradientStopCollection(stops, 2, coll.put()))) {
+            rt_->CreateRadialGradientBrush(
+                D2D1::RadialGradientBrushProperties(c, D2D1::Point2F(), r, r),
+                coll.get(), avatarBrush_.put());
+        }
     }
 
-    // Gli occhi. Due, scuri, che si spostano dentro la faccia verso dove sta
-    // guardando: a trenta punti di diametro il bianco dell'occhio con la
-    // pupilla dentro sarebbe illeggibile, mentre due macchie che si muovono
-    // insieme si capiscono subito.
-    const float eyeR  = std::max(1.8f, radius * 0.17f);
-    const float apart = radius * 0.36f;
-    const float range = radius * 0.20f;   // quanto lontano possono spostarsi
+    if (avatarBrush_) {
+        avatarBrush_->SetCenter(c);
+        avatarBrush_->SetRadiusX(r * 1.15f);
+        avatarBrush_->SetRadiusY(r * 1.15f);
+        // L'origine della luce, in alto a sinistra: e' cio' che trasforma un
+        // cerchio in una sfera.
+        avatarBrush_->SetGradientOriginOffset(D2D1::Point2F(-r * 0.42f, -r * 0.5f));
+        avatarBrush_->SetOpacity(contentAlpha_);
+        rt_->FillEllipse(D2D1::Ellipse(c, r, r), avatarBrush_.get());
+    } else {
+        rt_->FillEllipse(D2D1::Ellipse(c, r, r), Brush(theme_.avatarBottom));
+    }
 
-    const float lx = std::clamp(state.avatarLookX, -1.f, 1.f) * range;
-    const float ly = std::clamp(state.avatarLookY, -1.f, 1.f) * range;
-    const float blink = std::clamp(state.avatarBlink, 0.f, 1.f);
+    // Un filo di luce sul bordo in alto: stacca la testa dal fondo della barra
+    // senza disegnarci intorno un contorno, che la farebbe sembrare un adesivo.
+    rt_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(c.x, c.y - r * 0.06f), r - 0.6f, r - 0.6f),
+                     Brush(theme_.avatarTop.withAlpha(0.5f)), 1.f);
 
-    // Chiudere l'occhio non e' farlo sparire: e' schiacciarlo. Un occhio che
-    // svanisce si legge come un errore di disegno, uno che si appiattisce si
-    // legge come una palpebra.
-    const float ry = std::max(0.35f, eyeR * (1.f - blink * 0.92f));
+    // ── Gli occhi ──
+    const float eyeDx = r * 0.34f;
+    const float eyeDy = r * 0.06f;
+    const float eyeRx = std::max(1.5f, r * 0.155f);
+    const float eyeRy = std::max(0.4f, r * 0.20f * (1.f - blink * 0.94f));
 
     for (int side = -1; side <= 1; side += 2) {
-        const D2D1_POINT_2F e =
-            D2D1::Point2F(c.x + apart * static_cast<float>(side) + lx, c.y + ly);
-        rt_->FillEllipse(D2D1::Ellipse(e, eyeR, ry), Brush(theme_.text));
+        const float ex = c.x + eyeDx * static_cast<float>(side) + lx;
+        const float ey = c.y + eyeDy + ly;
+
+        rt_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(ex, ey), eyeRx, eyeRy),
+                         Brush(theme_.avatarEye));
+
+        // Il riflesso sparisce con la palpebra: un puntino bianco sospeso su un
+        // occhio chiuso e' la cosa che fa sembrare rotto tutto il resto.
+        if (blink < 0.45f) {
+            const float g = std::max(0.7f, eyeRx * 0.38f);
+            rt_->FillEllipse(
+                D2D1::Ellipse(D2D1::Point2F(ex - eyeRx * 0.34f, ey - eyeRy * 0.42f), g, g),
+                Brush(theme_.avatarGlint.withAlpha(theme_.avatarGlint.a * (1.f - blink * 2.2f))));
+        }
     }
+
+    // ── Le sopracciglia ──
+    //
+    // Sottili, alte e chiare. La prima versione le aveva spesse, dritte e
+    // vicine agli occhi: a quella distanza due barre orizzontali si leggono
+    // come un cipiglio, e la faccia sembrava arrabbiata a riposo. Sono anche
+    // arcuate — un arco, non un segmento — perche' un tratto rettilineo sopra
+    // un occhio tondo si vede subito che e' stato disegnato da un computer.
+    if (!roundCap_) {
+        d2dFactory_->CreateStrokeStyle(
+            D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND,
+                                        D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_ROUND),
+            nullptr, 0, roundCap_.put());
+    }
+
+    // Con qualcosa da chiedere si alzano e si inclinano verso l'interno: e' la
+    // faccia di chi aspetta una risposta. A riposo restano quasi piatte.
+    const float browY     = c.y - r * 0.50f + ly * 0.55f;
+    const float browHalf  = r * 0.16f;
+    const float browArch  = state.avatarAttention ? r * 0.10f : r * 0.055f;
+    const float browTilt  = state.avatarAttention ? r * 0.10f : 0.f;
+    const float browLift  = state.avatarAttention ? r * 0.06f : 0.f;
+    const float browWidth = std::max(0.9f, r * 0.075f);
+
+    for (int side = -1; side <= 1; side += 2) {
+        const float bx = c.x + eyeDx * static_cast<float>(side) + lx * 0.55f;
+        const float y  = browY - browLift;
+        const float sf = static_cast<float>(side);
+
+        const D2D1_POINT_2F inner = D2D1::Point2F(bx - browHalf * sf, y - browTilt);
+        const D2D1_POINT_2F outer = D2D1::Point2F(bx + browHalf * sf, y + browTilt * 0.3f);
+        const D2D1_POINT_2F ctrl  = D2D1::Point2F((inner.x + outer.x) * 0.5f,
+                                                  (inner.y + outer.y) * 0.5f - browArch);
+
+        winrt::com_ptr<ID2D1PathGeometry> brow;
+        if (SUCCEEDED(d2dFactory_->CreatePathGeometry(brow.put()))) {
+            winrt::com_ptr<ID2D1GeometrySink> sink;
+            if (SUCCEEDED(brow->Open(sink.put()))) {
+                sink->BeginFigure(inner, D2D1_FIGURE_BEGIN_HOLLOW);
+                sink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(ctrl, outer));
+                sink->EndFigure(D2D1_FIGURE_END_OPEN);
+                if (SUCCEEDED(sink->Close())) {
+                    rt_->DrawGeometry(brow.get(), Brush(theme_.avatarEye.withAlpha(0.55f)),
+                                      browWidth, roundCap_.get());
+                }
+            }
+        }
+    }
+
+    // ── L'anello di richiamo ──
+    if (state.avatarAttention) {
+        rt_->DrawEllipse(D2D1::Ellipse(c, r + 2.2f, r + 2.2f), Brush(theme_.accent), 2.f);
+    } else if (state.avatarHovered) {
+        rt_->DrawEllipse(D2D1::Ellipse(c, r + 2.f, r + 2.f),
+                         Brush(theme_.text.withAlpha(0.22f)), 1.4f);
+    }
+}
+
+void Renderer::RedrawAvatar(const ui::RectF& rect, const DrawState& state) {
+    if (!rt_ || !surface_ || rect.empty()) return;
+
+    // Un margine attorno: l'anello di richiamo sborda dal rettangolo dello slot,
+    // e l'antialiasing sborda di una frazione di punto oltre. Ripulire troppo
+    // poco lascerebbe un alone del fotogramma precedente.
+    const float pad = 6.f;
+    const ui::RectF area{rect.x - pad, rect.y - pad, rect.w + pad * 2.f, rect.h + pad * 2.f};
+
+    rt_->BeginDraw();
+    contentAlpha_ = 1.f;
+
+    // Il clip vale anche per Clear: si azzera solo questo pezzo di superficie,
+    // il resto del disegno resta quello di prima.
+    rt_->PushAxisAlignedClip(Rect(area), D2D1_ANTIALIAS_MODE_ALIASED);
+    rt_->Clear(D2D1::ColorF(0, 0.f));
+
+    // Sotto l'avatar c'e' il fondo della barra, e va ridisegnato: l'area
+    // ripulita e' dentro il pannello, non sul vuoto.
+    FillRounded(area, 0.f, theme_.background);
+    DrawAvatar(rect, state);
+
+    rt_->PopAxisAlignedClip();
+
+    const HRESULT hr = rt_->EndDraw();
+    if (FAILED(hr)) {
+        log::Hresult(L"EndDraw (avatar)", hr);
+        CreateSurface();
+        return;
+    }
+
+    const float scale = static_cast<float>(dpi_) / 96.f;
+    RECT dirty{static_cast<LONG>(area.x * scale),
+               static_cast<LONG>(area.y * scale),
+               static_cast<LONG>(area.right()  * scale + 1.f),
+               static_cast<LONG>(area.bottom() * scale + 1.f)};
+    dirty.left   = std::max<LONG>(0, dirty.left);
+    dirty.top    = std::max<LONG>(0, dirty.top);
+    dirty.right  = std::min<LONG>(static_cast<LONG>(widthPx_),  dirty.right);
+    dirty.bottom = std::min<LONG>(static_cast<LONG>(heightPx_), dirty.bottom);
+
+    Present(state.opacity * theme_.opacity, &dirty);
 }
 
 void Renderer::DrawWidget(const ui::Widget& w, const DrawState& state) {
     if (compact_ && ui::HiddenWhenCompact(w)) return;
 
     switch (w.type) {
+        case ui::WidgetType::Avatar:
+            DrawAvatar(w.rect, state);
+            break;
+
         case ui::WidgetType::Group:
             for (const auto& child : w.children) DrawWidget(child, state);
             break;
@@ -629,8 +744,6 @@ void Renderer::Draw(const ui::Widget& root, const DrawState& state) {
         contentAlpha_ = 1.f;
     }
 
-    DrawAvatar(state);
-
     const HRESULT hr = rt_->EndDraw();
     if (FAILED(hr)) {
         log::Hresult(L"EndDraw", hr);
@@ -644,48 +757,6 @@ void Renderer::Draw(const ui::Widget& root, const DrawState& state) {
 void Renderer::Repaint(float opacity) {
     if (!rt_ || !surface_) return;
     Present(opacity * theme_.opacity);
-}
-
-void Renderer::RedrawAvatar(const DrawState& state) {
-    if (!rt_ || !surface_) return;
-
-    const ui::RectF r = AvatarRect(state);
-    if (r.empty()) return;
-
-    // Un margine attorno: l'anello di richiamo e' spesso, e l'antialiasing
-    // sborda di una frazione di punto. Ripulire troppo poco lascerebbe un
-    // alone del fotogramma precedente.
-    const float pad = 4.f;
-    const ui::RectF area{r.x - pad, r.y - pad, r.w + pad * 2.f, r.h + pad * 2.f};
-
-    rt_->BeginDraw();
-    contentAlpha_ = 1.f;
-
-    // Il clip vale anche per Clear: si azzera solo questo pezzo di superficie,
-    // il resto del disegno resta quello di prima.
-    rt_->PushAxisAlignedClip(Rect(area), D2D1_ANTIALIAS_MODE_ALIASED);
-    rt_->Clear(D2D1::ColorF(0, 0.f));
-    DrawAvatar(state);
-    rt_->PopAxisAlignedClip();
-
-    const HRESULT hr = rt_->EndDraw();
-    if (FAILED(hr)) {
-        log::Hresult(L"EndDraw (avatar)", hr);
-        CreateSurface();
-        return;
-    }
-
-    const float scale = static_cast<float>(dpi_) / 96.f;
-    RECT dirty{static_cast<LONG>(area.x * scale),
-               static_cast<LONG>(area.y * scale),
-               static_cast<LONG>(area.right()  * scale + 1.f),
-               static_cast<LONG>(area.bottom() * scale + 1.f)};
-    dirty.left   = std::max<LONG>(0, dirty.left);
-    dirty.top    = std::max<LONG>(0, dirty.top);
-    dirty.right  = std::min<LONG>(static_cast<LONG>(widthPx_),  dirty.right);
-    dirty.bottom = std::min<LONG>(static_cast<LONG>(heightPx_), dirty.bottom);
-
-    Present(state.opacity * theme_.opacity, &dirty);
 }
 
 void Renderer::Present(float opacity, const RECT* dirtyPx) {

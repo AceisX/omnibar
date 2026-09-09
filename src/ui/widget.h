@@ -67,6 +67,13 @@ enum class WidgetType {
     Label,
     Separator,
     Spacer,
+
+    // La faccia dell'agente. E' un tipo a se' e non un bottone con un'icona,
+    // perche' ha uno stato proprio che nessun altro widget ha — dove guarda,
+    // se sta sbattendo le ciglia, se ha qualcosa da chiedere — e perche' e'
+    // l'unico elemento del progetto che deve leggersi come qualcuno invece che
+    // come qualcosa. Un'icona che ammicca sarebbe un'icona rotta.
+    Avatar,
     // Fase 3: Meter, Sparkline, Slider, Segmented, Progress, Image, Swatch,
     // Panel, List, Grid, Prompt.
 };
@@ -119,7 +126,8 @@ struct Widget {
     }
 
     bool interactive() const {
-        return (type == WidgetType::Button || type == WidgetType::Toggle) && enabled;
+        return (type == WidgetType::Button || type == WidgetType::Toggle ||
+                type == WidgetType::Avatar) && enabled;
     }
 };
 
@@ -134,6 +142,7 @@ Widget Toggle(std::string id, std::wstring icon, std::wstring tooltip, bool on, 
 Widget Label(std::wstring text, Emphasis emphasis = Emphasis::Normal);
 Widget Separator();
 Widget Spacer(float size = 0.f);
+Widget Avatar(std::string id, Action action);
 
 Action Internal(std::wstring name);
 Action Url(std::wstring url);

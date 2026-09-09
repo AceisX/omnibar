@@ -45,6 +45,8 @@ private:
     float EdgeDistanceDip(POINT cursor) const;
 
     // Il rettangolo dell'avatar in coordinate schermo, vuoto se non c'e'.
+    // Adesso l'avatar e' un widget dell'albero: la sua posizione la decide il
+    // layout, non una formula a parte.
     RECT AvatarScreenRect() const;
 
     // Lo sguardo insegue il cursore con uno smorzamento, e ogni tanto sbatte le

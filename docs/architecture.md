@@ -697,29 +697,28 @@ l'etichetta di dove viene, e non inventa il resto.
 
 ### 13.3 · L'avatar
 
-In fondo alla barra c'è un piccolo disco. È sempre tondo, sta sempre nello stesso punto e non
-si muove: né con l'apertura, né con il contenuto, né col programma in primo piano.
+In fondo alla barra, **ultimo slot**, c'è la faccia dell'agente. È un widget come gli altri —
+`WidgetType::Avatar` — ma sta sempre in coda e non cambia mai: tutto quello che gli sta sopra
+dipende dal programma in primo piano, lui no. È il posto più stabile della barra.
 
 È **la faccia dell'agente** — quella che chiede il permesso quando un modello vuole fare
 qualcosa (§13.1), che segnala quando c'è qualcosa da decidere, e da cui si apre il pannello
 dell'IA. Una cosa che chiede permesso deve stare sempre nello stesso punto, altrimenti la si
 cerca invece di guardarla.
 
-**Si vede anche a barra chiusa**, ed è l'unica eccezione alla regola "a riposo solo una
-linea". Ci sta perché un avviso che si vede solo se apri la barra non è un avviso.
+**Si vede quando la barra è aperta.** Non serve che sia visibile a riposo: quando l'agente ha
+qualcosa da chiedere è la barra ad aprirsi da sola (stato `Attention`, §8), e l'avatar è già
+lì. Un elemento sempre visibile fuori dalla barra sarebbe stato una seconda cosa da guardare.
 
-Conseguenza tecnica non ovvia: la finestra a riposo è click-through, altrimenti intercetterebbe
-i click destinati a ciò che c'è sotto. Ma l'avatar dev'essere premibile *a riposo*. Il
-click-through quindi non è uno stato della barra: si toglie solo mentre il cursore è
-effettivamente sopra il disco, e si rimette appena esce.
+**Perché è un tipo del vocabolario e non un bottone con un'icona.** Ha uno stato che nessun
+altro widget ha — dove guarda, se sta sbattendo le ciglia, se ha qualcosa da chiedere — ed è
+l'unico elemento del progetto che deve leggersi come *qualcuno* invece che come *qualcosa*.
+Un'icona che ammicca sarebbe un'icona rotta. Essendo un widget, posizione, hit-test e click
+arrivano dal layout come per tutti gli altri, senza codice a parte.
 
 Lo stato lo racconta **l'anello**, non un pallino: quando c'è qualcosa da decidere l'anello
 diventa dell'accento e si ispessisce. È l'unico segnale del progetto che deve funzionare con
 la coda dell'occhio, e sei pixel di pallino in un angolo non lo fanno.
-
-L'avatar **non sta nell'albero dei widget**: non appartiene a nessun profilo e non cambia mai,
-quindi non ha senso farlo passare per il layout insieme a cose che cambiano a ogni
-applicazione.
 
 #### La licenza, che qui decide il progetto
 
@@ -740,9 +739,31 @@ La strada praticabile separa nettamente le due cose:
 | **Si scrive** | il disegnatore in C++/Direct2D, nostro. Primitive geometriche, arrotondamenti, rotazioni: è esattamente ciò che Direct2D sa fare |
 | **Non si tocca** | il loro codice. Nessuna riga nel nostro binario, nessun collegamento, nessuna derivazione |
 
-#### Cosa fa l'avatar oggi, e quanto costa
+#### Com'è disegnato
 
-Non è un segnaposto inerte: **guarda il cursore e sbatte le ciglia.**
+Trenta punti di diametro sono pochi, e questo detta ogni scelta: niente bocca (a questa scala
+diventa una macchia), niente naso, nessun dettaglio che al 100 % di DPI finirebbe su meno di
+due pixel. Restano tre cose, e bastano a leggere una faccia:
+
+- **Il volume** lo fa una sfumatura radiale con l'origine spostata in alto a sinistra. Senza,
+  il disco resta un cerchio piatto e non una testa.
+- **Il riflesso negli occhi** è un punto bianco di un punto e mezzo, e da solo fa la differenza
+  fra due buchi e due occhi: è il riflesso a dare l'impressione che siano bagnati, cioè vivi.
+  Sparisce con la palpebra — un puntino sospeso su un occhio chiuso fa sembrare rotto tutto il
+  resto.
+- **Le sopracciglia** portano l'espressione. A questa scala gli occhi possono solo guardare e
+  chiudersi; l'umore lo racconta l'inclinazione di due archi. Sottili, alti e chiari: la prima
+  versione li aveva spessi, dritti e vicini agli occhi, e due barre orizzontali a quella
+  distanza si leggono come un cipiglio — la faccia sembrava arrabbiata a riposo. Sono archi e
+  non segmenti perché un tratto rettilineo sopra un occhio tondo si vede subito che l'ha
+  disegnato un computer.
+
+È anche l'unico punto di colore della barra, ed è voluto: fra icone tutte monocrome, una faccia
+colorata si legge come qualcuno invece che come l'ennesimo comando.
+
+#### Cosa fa, e quanto costa
+
+**Guarda il cursore e sbatte le ciglia.**
 
 Lo sguardo insegue con un ritardo di ~110 ms, e il ritardo è il punto. Fra la direzione del
 cursore e dove l'occhio è arrivato c'è tutta la differenza fra uno sguardo e un indicatore:
@@ -756,8 +777,9 @@ una palpebra.
 
 **Il costo è zero quando non si muove.** Due cose lo garantiscono:
 
-- I timer dello sguardo e del battito **esistono solo mentre servono**. A cursore fermo e
-  occhi aperti non c'è nessun timer acceso: misurato 0 ms di CPU su 45 secondi.
+- I timer dello sguardo e del battito **esistono solo mentre servono**, e solo a barra aperta.
+  A cursore fermo, occhi aperti o barra chiusa non c'è nessun timer acceso: misurato 0 ms di
+  CPU su 45 secondi.
 - Quando invece si muove, **si ridisegna il solo disco**, e si ricopia sullo schermo la sola
   area che occupa (`UpdateLayeredWindowIndirect` con area sporca). La superficie della barra è
   alta quanto lo schermo: ridisegnarla tutta per spostare due pupille di mezzo punto
