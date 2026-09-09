@@ -695,6 +695,55 @@ chiaramente invece di promettere un numero. L'architettura è quindi un'interfac
 Nessuno di questi legge la quota di un abbonamento consumer. Il widget mostra ciò che sa, con
 l'etichetta di dove viene, e non inventa il resto.
 
+### 13.3 · L'avatar
+
+In fondo alla barra c'è un piccolo disco. È sempre tondo, sta sempre nello stesso punto e non
+si muove: né con l'apertura, né con il contenuto, né col programma in primo piano.
+
+È **la faccia dell'agente** — quella che chiede il permesso quando un modello vuole fare
+qualcosa (§13.1), che segnala quando c'è qualcosa da decidere, e da cui si apre il pannello
+dell'IA. Una cosa che chiede permesso deve stare sempre nello stesso punto, altrimenti la si
+cerca invece di guardarla.
+
+**Si vede anche a barra chiusa**, ed è l'unica eccezione alla regola "a riposo solo una
+linea". Ci sta perché un avviso che si vede solo se apri la barra non è un avviso.
+
+Conseguenza tecnica non ovvia: la finestra a riposo è click-through, altrimenti intercetterebbe
+i click destinati a ciò che c'è sotto. Ma l'avatar dev'essere premibile *a riposo*. Il
+click-through quindi non è uno stato della barra: si toglie solo mentre il cursore è
+effettivamente sopra il disco, e si rimette appena esce.
+
+Lo stato lo racconta **l'anello**, non un pallino: quando c'è qualcosa da decidere l'anello
+diventa dell'accento e si ispessisce. È l'unico segnale del progetto che deve funzionare con
+la coda dell'occhio, e sei pixel di pallino in un angolo non lo fanno.
+
+L'avatar **non sta nell'albero dei widget**: non appartiene a nessun profilo e non cambia mai,
+quindi non ha senso farlo passare per il layout insieme a cose che cambiano a ogni
+applicazione.
+
+#### La licenza, che qui decide il progetto
+
+L'avatar nasce da [bible-strong-avatar-lab](https://github.com/smontlouis/bible-strong-avatar-lab),
+uno studio di autoring che compone avatar procedurali da primitive geometriche e li esporta
+come definizioni `.avatar.json`.
+
+**Quel progetto è AGPL-3.0. OmniBar è MIT.** Incorporarne il codice obbligherebbe l'intero
+progetto a diventare AGPL, con obblighi che si estendono all'uso in rete. Non è una cosa che
+si fa per un avatar.
+
+La strada praticabile separa nettamente le due cose:
+
+| | |
+|---|---|
+| **Si usa** | lo studio, come strumento a sé, per disegnare l'avatar. Il risultato del disegno è opera di chi lo disegna |
+| **Si esporta** | la definizione delle forme — un formato di dati, e i formati di dati non sono coperti da copyright |
+| **Si scrive** | il disegnatore in C++/Direct2D, nostro. Primitive geometriche, arrotondamenti, rotazioni: è esattamente ciò che Direct2D sa fare |
+| **Non si tocca** | il loro codice. Nessuna riga nel nostro binario, nessun collegamento, nessuna derivazione |
+
+Finché quel disegnatore non esiste, il posto è occupato da un segnaposto dichiarato come tale:
+un disco con due occhi. Serve a far vedere che il posto c'è e che riceve i click, non a essere
+carino.
+
 ---
 
 ## 14 · Configurazione

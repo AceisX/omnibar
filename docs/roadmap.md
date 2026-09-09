@@ -117,6 +117,9 @@ il drag&drop.
 - [ ] `localapi`: named pipe + HTTP su loopback, con autenticazione di sessione
 - [ ] CLI `omnibar` (`ask`, `notify`, `tag`, `profile`)
 - [ ] Widget `prompt` e stato `Attention` con timeout e default sicuro
+- [x] Lo *slot* dell'avatar: posizione fissa, sempre tondo, premibile anche a barra chiusa
+- [ ] Il disegnatore dell'avatar in Direct2D, da una definizione di forme (§13.3) — **mai**
+      codice AGPL nel binario
 - [ ] Hook `PreToolUse` per Claude Code: approvazioni sulla barra (§13.1)
 - [ ] Regole "Sempre" visibili e revocabili dalle impostazioni
 - [ ] `UsageProvider`: `claude-code-local`, e gli altri dietro configurazione (§13.2)

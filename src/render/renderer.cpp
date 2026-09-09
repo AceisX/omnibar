@@ -473,6 +473,65 @@ void Renderer::FillProfile(const DrawState& state, float alongCenter, float alon
     rt_->DrawGeometry(geo.get(), Brush(theme_.border), theme_.borderWidth);
 }
 
+ui::RectF Renderer::AvatarRect(const DrawState& state) const {
+    if (!state.avatarShown) return {};
+
+    const float w = static_cast<float>(widthPx_) * 96.f / static_cast<float>(dpi_);
+    const float h = static_cast<float>(heightPx_) * 96.f / static_cast<float>(dpi_);
+
+    const bool  vertical = (state.edge == Edge::Left || state.edge == Edge::Right);
+    const float full     = vertical ? h : w;
+    const float across   = vertical ? w : h;
+    const float d        = state.avatarDiameter;
+    if (d <= 0.f || full < d + state.avatarMargin) return {};
+
+    // Centrato nello spessore della barra, cosi' resta un cerchio intero e non
+    // una mezzaluna appoggiata al bordo dello schermo.
+    const float acrossPos = (across - d) * 0.5f;
+
+    // "In fondo": l'estremita' lontana dall'origine dello schermo. Su un bordo
+    // laterale e' in basso, su uno orizzontale e' a destra.
+    const float alongPos = full - state.avatarMargin - d;
+
+    return vertical ? ui::RectF{acrossPos, alongPos, d, d}
+                    : ui::RectF{alongPos, acrossPos, d, d};
+}
+
+void Renderer::DrawAvatar(const DrawState& state) {
+    const ui::RectF r = AvatarRect(state);
+    if (r.empty()) return;
+
+    const float radius = r.w * 0.5f;
+    const D2D1_POINT_2F c = D2D1::Point2F(r.x + radius, r.y + radius);
+
+    // Il disco. Stesso fondo della barra: l'avatar e' parte della barra, non un
+    // oggetto appoggiato sopra.
+    rt_->FillEllipse(D2D1::Ellipse(c, radius, radius), Brush(theme_.background));
+
+    // L'anello. Normalmente e' il bordo della barra; quando c'e' qualcosa da
+    // decidere diventa l'accento e si ispessisce — e' l'unico segnale che deve
+    // funzionare con la coda dell'occhio, quindi non e' affidato a un pallino
+    // di sei pixel.
+    const Color ring  = state.avatarAttention ? theme_.accent : theme_.border;
+    const float width = state.avatarAttention ? 2.4f : theme_.borderWidth;
+    rt_->DrawEllipse(D2D1::Ellipse(c, radius - width * 0.5f, radius - width * 0.5f),
+                     Brush(ring), width);
+
+    if (state.avatarHovered) {
+        rt_->FillEllipse(D2D1::Ellipse(c, radius - width, radius - width), Brush(theme_.hover));
+    }
+
+    // SEGNAPOSTO. L'avatar vero sara' una definizione di forme geometriche
+    // disegnata qui con Direct2D (vedi docs/architecture.md §13.3): due occhi
+    // servono a occupare il posto e a far vedere che il posto c'e', non a
+    // essere carini.
+    const float eye = std::max(1.6f, radius * 0.16f);
+    const float dx  = radius * 0.34f;
+    const float dy  = radius * 0.08f;
+    rt_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(c.x - dx, c.y - dy), eye, eye), Brush(theme_.text));
+    rt_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(c.x + dx, c.y - dy), eye, eye), Brush(theme_.text));
+}
+
 void Renderer::DrawWidget(const ui::Widget& w, const DrawState& state) {
     if (compact_ && ui::HiddenWhenCompact(w)) return;
 
@@ -556,6 +615,8 @@ void Renderer::Draw(const ui::Widget& root, const DrawState& state) {
         DrawWidget(root, state);
         contentAlpha_ = 1.f;
     }
+
+    DrawAvatar(state);
 
     const HRESULT hr = rt_->EndDraw();
     if (FAILED(hr)) {

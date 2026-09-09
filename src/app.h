@@ -43,6 +43,9 @@ private:
     bool OnInternalAction(std::wstring_view name);
 
     float EdgeDistanceDip(POINT cursor) const;
+
+    // Il rettangolo dell'avatar in coordinate schermo, vuoto se non c'e'.
+    RECT AvatarScreenRect() const;
     void  SetCursorTick(UINT intervalMs);
 
     // ── Geometria e disegno ──
@@ -98,6 +101,11 @@ private:
     // l'animazione va a 62 fotogrammi al secondo con spaziatura irregolare —
     // che e' cio' che si legge come movimento "forzato".
     bool      timerBoosted_ = false;
+
+    // L'avatar in fondo alla barra: si vede anche a riposo, quindi deve poter
+    // ricevere il cursore anche quando tutto il resto e' click-through.
+    bool avatarHovered_   = false;
+    bool avatarAttention_ = false;
 
     float cursorAlong_ = -1.f;  // cursore lungo la barra, in DIP; < 0 = non sopra
     float magnify_     = 0.f;

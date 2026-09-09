@@ -33,7 +33,12 @@ constexpr UINT kFastTickMs = 8;
 constexpr UINT kOpenMs     = 260;
 constexpr UINT kCloseMs    = 200;
 constexpr UINT kAnimTickMs = 8;
-constexpr UINT kUnhoverMs  = 420;
+// Quanto aspetta prima di COMINCIARE a chiudersi, non quanto ci mette a
+// chiudersi: sono due tempi diversi e si sbagliano volentieri l'uno per
+// l'altro. Questo serve solo a non far sparire la barra se il cursore ne esce
+// per un attimo mentre punta un bottone sul bordo. Duecento millisecondi
+// bastano a coprire quello; oltre, si sente come una barra che non se ne va.
+constexpr UINT kUnhoverMs  = 200;
 
 constexpr float kOutsideMarginDip = 6.f;
 
@@ -326,6 +331,21 @@ float App::EdgeDistanceDip(POINT cursor) const {
            static_cast<float>(placement_.dpi ? placement_.dpi : 96);
 }
 
+RECT App::AvatarScreenRect() const {
+    if (!placement_.valid()) return RECT{};
+
+    render::DrawState probe;
+    probe.edge = placementCfg_.edge;
+    const ui::RectF r = renderer_.AvatarRect(probe);
+    if (r.empty()) return RECT{};
+
+    const float scale = static_cast<float>(placement_.dpi ? placement_.dpi : 96) / 96.f;
+    return RECT{placement_.rect.left + static_cast<LONG>(r.x * scale),
+                placement_.rect.top  + static_cast<LONG>(r.y * scale),
+                placement_.rect.left + static_cast<LONG>(r.right()  * scale),
+                placement_.rect.top  + static_cast<LONG>(r.bottom() * scale)};
+}
+
 void App::OnCursorTick() {
     POINT cursor{};
     if (!GetCursorPos(&cursor)) return;
@@ -345,10 +365,22 @@ void App::OnCursorTick() {
         const bool atEdge  = wasFast ? (dist < kNearEdgeDip * 1.3f) : (dist < kNearEdgeDip);
         SetCursorTick(atEdge ? kFastTickMs : kSlowTickMs);
 
-        // A riposo non si ridisegna nulla: la linea e la sporgenza non si
-        // muovono, quindi non c'e' niente da aggiornare. Prima la barra
-        // inseguiva il cursore e ridisegnava di continuo — quel movimento e'
-        // proprio cio' che stonava, e toglierlo ha tolto anche il costo.
+        // L'avatar si vede anche a riposo, quindi deve poter essere premuto
+        // anche a riposo. La finestra pero' e' click-through: si toglie il
+        // click-through solo mentre il cursore e' effettivamente sopra di lui,
+        // cosi' il resto del bordo continua a lasciar passare tutto.
+        const RECT av = AvatarScreenRect();
+        const bool onAvatar = (av.right > av.left) && PointIn(av, cursor);
+        if (onAvatar != avatarHovered_) {
+            avatarHovered_ = onAvatar;
+            shell::SetClickThrough(hwnd_, !onAvatar);
+            Redraw();
+        }
+
+        // A parte quello, a riposo non si ridisegna nulla: la linea e la
+        // sporgenza non si muovono. Prima la barra inseguiva il cursore e
+        // ridisegnava di continuo — quel movimento e' proprio cio' che
+        // stonava, e toglierlo ha tolto anche il costo.
         if (trigger_.Update(PointIn(placement_.trigger, cursor), cursor, now)) Reveal();
         return;
     }
@@ -426,6 +458,19 @@ void App::OnMouseMove(POINT clientPx) {
 }
 
 void App::OnMouseDown(POINT clientPx) {
+    POINT screen = clientPx;
+    ClientToScreen(hwnd_, &screen);
+    const RECT av = AvatarScreenRect();
+    if (av.right > av.left && PointIn(av, screen)) {
+        // L'avatar non sta nell'albero dei widget: non appartiene a nessun
+        // profilo e non cambia mai, quindi non ha senso farlo passare per il
+        // layout insieme a cose che cambiano a ogni applicazione.
+        pressedId_ = "avatar";
+        SetCapture(hwnd_);
+        Redraw();
+        return;
+    }
+
     const ui::RectF pt = ToDip(clientPx);
     const ui::Widget* hit = ui::HitTest(root_, pt.x, pt.y);
     pressedId_ = hit ? hit->id : std::string{};
@@ -438,6 +483,16 @@ void App::OnMouseDown(POINT clientPx) {
 void App::OnMouseUp(POINT clientPx) {
     if (pressedId_.empty()) return;
     ReleaseCapture();
+
+    if (pressedId_ == "avatar") {
+        pressedId_.clear();
+        POINT screen = clientPx;
+        ClientToScreen(hwnd_, &screen);
+        const RECT av = AvatarScreenRect();
+        if (av.right > av.left && PointIn(av, screen)) OnInternalAction(L"ai.panel");
+        Redraw();
+        return;
+    }
 
     const ui::RectF pt = ToDip(clientPx);
     const ui::Widget* hit = ui::HitTest(root_, pt.x, pt.y);
@@ -516,6 +571,16 @@ bool App::OnInternalAction(std::wstring_view name) {
         return true;
     }
     if (name == L"app.quit")  { PostMessageW(hwnd_, WM_APP_QUIT, 0, 0); return true; }
+    if (name == L"ai.panel") {
+        // Fase 4: qui si aprira' il pannello dell'agente — richieste di
+        // permesso, utilizzo, azioni sulla selezione. Per ora si limita a
+        // dimostrare che l'avatar riceve il click anche a barra chiusa.
+        log::Info(L"avatar premuto (il pannello dell'agente arriva con la fase 4)");
+        avatarAttention_ = !avatarAttention_;   // provvisorio: mostra l'anello di richiamo
+        Redraw();
+        return true;
+    }
+
     // I bottoni dell'albero di prova non fanno niente: esistono per far vedere
     // che il click arriva dove deve. Spariranno con i profili veri.
     if (name == L"demo.noop") {
@@ -636,6 +701,8 @@ void App::Redraw() {
     state.contentAlpha  = SmoothStep(0.55f, 0.98f, open_);
     state.cursorAlong   = cursorAlong_;
     state.magnify       = magnify_;
+    state.avatarHovered   = avatarHovered_;
+    state.avatarAttention = avatarAttention_;
 
     renderer_.Draw(root_, state);
 }

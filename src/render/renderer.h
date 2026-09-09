@@ -60,6 +60,23 @@ struct DrawState {
     // ci sta sopra. Ingrandisce appena le icone vicine.
     float cursorAlong = -1.f;
     float magnify     = 0.f;
+
+    // ── L'avatar ──
+    //
+    // Sta in fondo alla barra, e' sempre tondo e non si muove: ne' con
+    // l'apertura ne' col contenuto. E' la faccia dell'agente — quella che
+    // chiede il permesso quando un modello vuole fare qualcosa (fase 4) — e una
+    // cosa che chiede permesso deve stare sempre nello stesso punto, altrimenti
+    // la si cerca invece di guardarla.
+    //
+    // Si vede anche a barra chiusa: e' l'unica eccezione alla regola "a riposo
+    // solo una linea", e ci sta perche' un avviso che si vede solo se apri la
+    // barra non e' un avviso.
+    bool  avatarShown     = true;
+    float avatarDiameter  = 30.f;
+    float avatarMargin    = 24.f;   // distanza dalla fine della barra
+    bool  avatarHovered   = false;
+    bool  avatarAttention = false;  // ha qualcosa da chiedere
 };
 
 class Renderer {
@@ -94,6 +111,12 @@ public:
     // sull'alpha sarebbe lavoro buttato.
     void Repaint(float opacity);
 
+    // Il rettangolo dell'avatar in DIP sulla superficie, vuoto se non va
+    // disegnato. Pubblico perche' serve anche all'hit-test di App, e due
+    // calcoli separati della stessa geometria sono due calcoli che prima o poi
+    // divergono.
+    ui::RectF AvatarRect(const DrawState& state) const;
+
 private:
     bool CreateSurface();
     void ReleaseSurface();
@@ -106,6 +129,8 @@ private:
     // quattro, una per bordo.
     void FillProfile(const DrawState& state, float alongCenter, float alongLen,
                      float thickness, float lineThick);
+
+    void DrawAvatar(const DrawState& state);
 
     void DrawWidget(const ui::Widget& w, const DrawState& state);
     float Magnification(const ui::Widget& w, const DrawState& state) const;
