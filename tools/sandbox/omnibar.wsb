@@ -1,0 +1,41 @@
+<Configuration>
+  <!-- Ambiente di prova per OmniBar.
+       Windows Sandbox e' una macchina Windows usa-e-getta inclusa in Windows 11
+       Pro. Serve qui per un motivo solo: Smart App Control non si applica
+       dentro, quindi un eseguibile appena compilato e non firmato si puo'
+       provare. Vedi docs/security.md §6.
+
+       Si apre facendo doppio clic su questo file, oppure con:
+           tools\sandbox\avvia.ps1
+  -->
+
+  <!-- La GPU virtuale serve alla composizione delle finestre: senza, il
+       desktop della sandbox va in software e i tempi dell'animazione non
+       somigliano piu' a quelli veri. -->
+  <VGpu>Enable</VGpu>
+
+  <!-- Niente rete: alla barra non serve, e una macchina di prova senza rete e'
+       una cosa in meno di cui preoccuparsi. -->
+  <Networking>Disable</Networking>
+
+  <MappedFolders>
+    <!-- L'eseguibile appena compilato. In sola lettura: la sandbox non deve
+         poter scrivere nella cartella di build dell'host. -->
+    <MappedFolder>
+      <HostFolder>E:\CLAUDE\BAR PROJECT\OMNIBAR\dist</HostFolder>
+      <SandboxFolder>C:\omnibar-dist</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+
+    <!-- Gli script che girano dentro. -->
+    <MappedFolder>
+      <HostFolder>E:\CLAUDE\BAR PROJECT\OMNIBAR\tools\sandbox</HostFolder>
+      <SandboxFolder>C:\omnibar-tools</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+
+  <LogonCommand>
+    <Command>powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File C:\omnibar-tools\dentro.ps1</Command>
+  </LogonCommand>
+</Configuration>
