@@ -521,15 +521,28 @@ void Renderer::DrawAvatar(const DrawState& state) {
         rt_->FillEllipse(D2D1::Ellipse(c, radius - width, radius - width), Brush(theme_.hover));
     }
 
-    // SEGNAPOSTO. L'avatar vero sara' una definizione di forme geometriche
-    // disegnata qui con Direct2D (vedi docs/architecture.md §13.3): due occhi
-    // servono a occupare il posto e a far vedere che il posto c'e', non a
-    // essere carini.
-    const float eye = std::max(1.6f, radius * 0.16f);
-    const float dx  = radius * 0.34f;
-    const float dy  = radius * 0.08f;
-    rt_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(c.x - dx, c.y - dy), eye, eye), Brush(theme_.text));
-    rt_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(c.x + dx, c.y - dy), eye, eye), Brush(theme_.text));
+    // Gli occhi. Due, scuri, che si spostano dentro la faccia verso dove sta
+    // guardando: a trenta punti di diametro il bianco dell'occhio con la
+    // pupilla dentro sarebbe illeggibile, mentre due macchie che si muovono
+    // insieme si capiscono subito.
+    const float eyeR  = std::max(1.8f, radius * 0.17f);
+    const float apart = radius * 0.36f;
+    const float range = radius * 0.20f;   // quanto lontano possono spostarsi
+
+    const float lx = std::clamp(state.avatarLookX, -1.f, 1.f) * range;
+    const float ly = std::clamp(state.avatarLookY, -1.f, 1.f) * range;
+    const float blink = std::clamp(state.avatarBlink, 0.f, 1.f);
+
+    // Chiudere l'occhio non e' farlo sparire: e' schiacciarlo. Un occhio che
+    // svanisce si legge come un errore di disegno, uno che si appiattisce si
+    // legge come una palpebra.
+    const float ry = std::max(0.35f, eyeR * (1.f - blink * 0.92f));
+
+    for (int side = -1; side <= 1; side += 2) {
+        const D2D1_POINT_2F e =
+            D2D1::Point2F(c.x + apart * static_cast<float>(side) + lx, c.y + ly);
+        rt_->FillEllipse(D2D1::Ellipse(e, eyeR, ry), Brush(theme_.text));
+    }
 }
 
 void Renderer::DrawWidget(const ui::Widget& w, const DrawState& state) {
@@ -633,7 +646,49 @@ void Renderer::Repaint(float opacity) {
     Present(opacity * theme_.opacity);
 }
 
-void Renderer::Present(float opacity) {
+void Renderer::RedrawAvatar(const DrawState& state) {
+    if (!rt_ || !surface_) return;
+
+    const ui::RectF r = AvatarRect(state);
+    if (r.empty()) return;
+
+    // Un margine attorno: l'anello di richiamo e' spesso, e l'antialiasing
+    // sborda di una frazione di punto. Ripulire troppo poco lascerebbe un
+    // alone del fotogramma precedente.
+    const float pad = 4.f;
+    const ui::RectF area{r.x - pad, r.y - pad, r.w + pad * 2.f, r.h + pad * 2.f};
+
+    rt_->BeginDraw();
+    contentAlpha_ = 1.f;
+
+    // Il clip vale anche per Clear: si azzera solo questo pezzo di superficie,
+    // il resto del disegno resta quello di prima.
+    rt_->PushAxisAlignedClip(Rect(area), D2D1_ANTIALIAS_MODE_ALIASED);
+    rt_->Clear(D2D1::ColorF(0, 0.f));
+    DrawAvatar(state);
+    rt_->PopAxisAlignedClip();
+
+    const HRESULT hr = rt_->EndDraw();
+    if (FAILED(hr)) {
+        log::Hresult(L"EndDraw (avatar)", hr);
+        CreateSurface();
+        return;
+    }
+
+    const float scale = static_cast<float>(dpi_) / 96.f;
+    RECT dirty{static_cast<LONG>(area.x * scale),
+               static_cast<LONG>(area.y * scale),
+               static_cast<LONG>(area.right()  * scale + 1.f),
+               static_cast<LONG>(area.bottom() * scale + 1.f)};
+    dirty.left   = std::max<LONG>(0, dirty.left);
+    dirty.top    = std::max<LONG>(0, dirty.top);
+    dirty.right  = std::min<LONG>(static_cast<LONG>(widthPx_),  dirty.right);
+    dirty.bottom = std::min<LONG>(static_cast<LONG>(heightPx_), dirty.bottom);
+
+    Present(state.opacity * theme_.opacity, &dirty);
+}
+
+void Renderer::Present(float opacity, const RECT* dirtyPx) {
     if (!surface_ || !dibBits_ || !memDC_ || !hwnd_) return;
 
     WICRect                 rc{0, 0, static_cast<INT>(widthPx_), static_cast<INT>(heightPx_)};
@@ -660,6 +715,21 @@ void Renderer::Present(float opacity) {
     POINT         src{0, 0};
     SIZE          dim{static_cast<LONG>(widthPx_), static_cast<LONG>(heightPx_)};
     BLENDFUNCTION blend{AC_SRC_OVER, 0, static_cast<BYTE>(opacity * 255.f + 0.5f), AC_SRC_ALPHA};
+
+    // Con un'area sporca si ricopia solo quella. Serve all'avatar, che cambia
+    // spesso e occupa un millesimo della superficie.
+    if (dirtyPx && dirtyPx->right > dirtyPx->left && dirtyPx->bottom > dirtyPx->top) {
+        UPDATELAYEREDWINDOWINFO info{sizeof(info)};
+        info.psize   = &dim;
+        info.hdcSrc  = memDC_;
+        info.pptSrc  = &src;
+        info.pblend  = &blend;
+        info.dwFlags = ULW_ALPHA;
+        info.prcDirty = dirtyPx;
+        if (UpdateLayeredWindowIndirect(hwnd_, &info)) return;
+        // Se non le va, si ricopia tutto: meglio lento che sbagliato.
+    }
+
     UpdateLayeredWindow(hwnd_, nullptr, nullptr, &dim, memDC_, &src, 0, &blend, ULW_ALPHA);
 }
 

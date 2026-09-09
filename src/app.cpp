@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <random>
 
 namespace omni {
 namespace {
@@ -47,6 +48,23 @@ constexpr float kOutsideMarginDip = 6.f;
 // arriva.
 constexpr float kNearEdgeDip = 160.f;
 
+// Lo sguardo insegue con un ritardo, ed e' la differenza fra la direzione del
+// cursore e dove l'occhio e' arrivato a distinguere uno sguardo da un
+// indicatore. Sotto i cinquanta millisecondi sembra incollato, sopra i
+// duecento sembra distratto.
+constexpr float kGazeTauMs    = 110.f;
+constexpr UINT  kAvatarTickMs = 32;      // ~30 Hz: e' una faccia, non un gioco
+
+// Quanto lontano deve stare il cursore perche' guardi del tutto in quella
+// direzione. Piu' vicino di cosi', gli occhi tornano al centro invece di
+// strabuzzare.
+constexpr float kGazeFullPx = 90.f;
+
+constexpr UINT kBlinkCloseMs = 80;
+constexpr UINT kBlinkOpenMs  = 120;
+constexpr UINT kBlinkMinMs   = 2600;
+constexpr UINT kBlinkMaxMs   = 6800;
+
 // Apertura e chiusura: ease-out puro, senza oltrepasso.
 //
 // L'oltrepasso c'era, ed era sbagliato qui. Su un oggetto che entra da fuori
@@ -62,6 +80,16 @@ float EaseOut(float t) {
 float SmoothStep(float edge0, float edge1, float x) {
     const float t = std::clamp((x - edge0) / (edge1 - edge0), 0.f, 1.f);
     return t * t * (3.f - 2.f * t);
+}
+
+// Inseguimento indipendente dalla frequenza dei tick. Con un fattore fisso per
+// tick, lo sguardo inseguirebbe piu' in fretta quando il polling e' veloce —
+// cioe' proprio quando il cursore e' vicino alla barra e la differenza si
+// noterebbe. Cosi' invece la sensazione resta la stessa.
+float Approach(float current, float target, float dtMs, float tauMs) {
+    if (tauMs <= 0.f) return target;
+    const float k = 1.f - std::exp(-dtMs / tauMs);
+    return current + (target - current) * k;
 }
 
 bool PointIn(const RECT& r, POINT p) {
@@ -127,6 +155,7 @@ bool App::Init(HINSTANCE inst) {
     Redraw();
 
     SetCursorTick(kSlowTickMs);
+    ScheduleBlink();
 
     log::Debug(L"placement: finestra " + std::to_wstring(placement_.rect.left) + L"," +
                std::to_wstring(placement_.rect.top) + L" " +
@@ -147,6 +176,8 @@ void App::Shutdown() {
     if (hwnd_) {
         KillTimer(hwnd_, IDT_CURSOR);
         KillTimer(hwnd_, IDT_ANIM);
+        KillTimer(hwnd_, IDT_AVATAR);
+        KillTimer(hwnd_, IDT_BLINK);
         shell::RemoveTrayIcon(hwnd_);
     }
     renderer_.Shutdown();
@@ -172,6 +203,12 @@ LRESULT App::Handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_TIMER:
             if (wp == IDT_CURSOR) OnCursorTick();
             else if (wp == IDT_ANIM) OnAnimTick();
+            else if (wp == IDT_AVATAR) OnAvatarTick();
+            else if (wp == IDT_BLINK) {
+                KillTimer(hwnd_, IDT_BLINK);
+                blinkStart_ = GetTickCount64();
+                EnsureAvatarTimer();
+            }
             return 0;
 
         case WM_MOUSEMOVE:
@@ -331,6 +368,90 @@ float App::EdgeDistanceDip(POINT cursor) const {
            static_cast<float>(placement_.dpi ? placement_.dpi : 96);
 }
 
+void App::AvatarAimAt(POINT cursor) {
+    const RECT av = AvatarScreenRect();
+    if (av.right <= av.left) { avatarAimX_ = avatarAimY_ = 0.f; return; }
+
+    const float cx = static_cast<float>(av.left + av.right) * 0.5f;
+    const float cy = static_cast<float>(av.top + av.bottom) * 0.5f;
+    const float dx = static_cast<float>(cursor.x) - cx;
+    const float dy = static_cast<float>(cursor.y) - cy;
+    const float len = std::sqrt(dx * dx + dy * dy);
+
+    if (len < 1.f) { avatarAimX_ = avatarAimY_ = 0.f; return; }
+
+    // Direzione normalizzata, attenuata quando il cursore gli e' addosso: un
+    // occhio che punta a un centimetro da se' stesso strabuzza invece di
+    // guardare.
+    const float k = SmoothStep(0.f, kGazeFullPx, len);
+    avatarAimX_ = dx / len * k;
+    avatarAimY_ = dy / len * k;
+}
+
+void App::EnsureAvatarTimer() {
+    const bool inMovimento = blinkStart_ != 0 ||
+                             std::fabs(avatarAimX_ - avatarLookX_) > 0.004f ||
+                             std::fabs(avatarAimY_ - avatarLookY_) > 0.004f;
+
+    if (inMovimento == avatarTimerOn_) return;
+    avatarTimerOn_ = inMovimento;
+
+    if (inMovimento) {
+        avatarTick_ = GetTickCount64();
+        SetTimer(hwnd_, IDT_AVATAR, kAvatarTickMs, nullptr);
+    } else {
+        KillTimer(hwnd_, IDT_AVATAR);
+    }
+}
+
+void App::ScheduleBlink() {
+    // Intervallo casuale: a cadenza fissa si nota il meccanismo invece della
+    // faccia.
+    static std::mt19937 rng{std::random_device{}()};
+    std::uniform_int_distribution<UINT> quando(kBlinkMinMs, kBlinkMaxMs);
+    SetTimer(hwnd_, IDT_BLINK, quando(rng), nullptr);
+}
+
+void App::PushAvatarState() {
+    if (!renderer_.Valid() || !placement_.valid()) return;
+
+    render::DrawState st;
+    st.edge            = placementCfg_.edge;
+    st.opacity         = 1.f;
+    st.avatarHovered   = avatarHovered_;
+    st.avatarAttention = avatarAttention_;
+    st.avatarLookX     = avatarLookX_;
+    st.avatarLookY     = avatarLookY_;
+    st.avatarBlink     = avatarBlink_;
+    renderer_.RedrawAvatar(st);
+}
+
+void App::OnAvatarTick() {
+    const ULONGLONG now = GetTickCount64();
+    const float dt = avatarTick_ ? static_cast<float>(now - avatarTick_)
+                                 : static_cast<float>(kAvatarTickMs);
+    avatarTick_ = now;
+
+    avatarLookX_ = Approach(avatarLookX_, avatarAimX_, dt, kGazeTauMs);
+    avatarLookY_ = Approach(avatarLookY_, avatarAimY_, dt, kGazeTauMs);
+
+    if (blinkStart_) {
+        const float e = static_cast<float>(now - blinkStart_);
+        if (e < kBlinkCloseMs) {
+            avatarBlink_ = e / kBlinkCloseMs;
+        } else if (e < kBlinkCloseMs + kBlinkOpenMs) {
+            avatarBlink_ = 1.f - (e - kBlinkCloseMs) / kBlinkOpenMs;
+        } else {
+            avatarBlink_ = 0.f;
+            blinkStart_  = 0;
+            ScheduleBlink();
+        }
+    }
+
+    PushAvatarState();
+    EnsureAvatarTimer();
+}
+
 RECT App::AvatarScreenRect() const {
     if (!placement_.valid()) return RECT{};
 
@@ -350,6 +471,12 @@ void App::OnCursorTick() {
     POINT cursor{};
     if (!GetCursorPos(&cursor)) return;
     const ULONGLONG now = GetTickCount64();
+
+    // Lo sguardo si aggiorna sempre, anche a barra chiusa: l'avatar si vede
+    // comunque. Qui si fissa solo la meta'; a raggiungerla ci pensa il timer
+    // dell'avatar, che si accende da solo se serve.
+    AvatarAimAt(cursor);
+    EnsureAvatarTimer();
 
     if (state_ == BarState::Hidden) {
         // Da chiusa la barra segue il monitor sotto il cursore: su un portatile
@@ -703,6 +830,9 @@ void App::Redraw() {
     state.magnify       = magnify_;
     state.avatarHovered   = avatarHovered_;
     state.avatarAttention = avatarAttention_;
+    state.avatarLookX     = avatarLookX_;
+    state.avatarLookY     = avatarLookY_;
+    state.avatarBlink     = avatarBlink_;
 
     renderer_.Draw(root_, state);
 }

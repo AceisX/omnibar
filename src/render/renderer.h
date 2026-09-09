@@ -77,6 +77,16 @@ struct DrawState {
     float avatarMargin    = 24.f;   // distanza dalla fine della barra
     bool  avatarHovered   = false;
     bool  avatarAttention = false;  // ha qualcosa da chiedere
+
+    // Dove guarda, -1..1 sui due assi, gia' smorzato da App. Non e' la
+    // direzione del cursore: e' dove l'occhio e' arrivato inseguendola. La
+    // differenza fra le due e' tutto cio' che distingue uno sguardo da un
+    // indicatore.
+    float avatarLookX = 0.f;
+    float avatarLookY = 0.f;
+
+    // 0 = occhi aperti, 1 = chiusi.
+    float avatarBlink = 0.f;
 };
 
 class Renderer {
@@ -105,6 +115,15 @@ public:
 
     void Draw(const ui::Widget& root, const DrawState& state);
 
+    // Ridisegna il solo avatar e presenta la sola area che occupa.
+    //
+    // Lo sguardo si muove spesso; la superficie della barra e' alta quanto lo
+    // schermo. Ridisegnarla tutta per spostare due pupille di mezzo punto
+    // costerebbe centottanta kilobyte a fotogramma per un disegno che ne cambia
+    // tre — e a quel prezzo un avatar che segue il cursore non e' un dettaglio
+    // simpatico, e' una barra che consuma.
+    void RedrawAvatar(const DrawState& state);
+
     // Ripresenta la superficie gia' disegnata con un'opacita' diversa. Serve
     // alla dissolvenza durante lo scorrimento: la barra non cambia, cambia solo
     // quanto si vede, e rifare tutto il disegno per una moltiplicazione
@@ -121,7 +140,7 @@ private:
     bool CreateSurface();
     void ReleaseSurface();
     bool CreateFormats();
-    void Present(float opacity);
+    void Present(float opacity, const RECT* dirtyPx = nullptr);
 
     // Il profilo completo della barra — linea, spalle e pianoro — come una sola
     // figura chiusa. Costruito in coordinate lungo/attraverso e poi

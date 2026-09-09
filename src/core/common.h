@@ -60,6 +60,8 @@ enum : UINT_PTR {
     IDT_CURSOR = 1,  // polling del cursore, 10 Hz — solo quando serve
     IDT_ANIM   = 2,  // scorrimento e transizioni, ~120 Hz mentre qualcosa si muove
     IDT_UNHOVER = 3, // isteresi di chiusura (one-shot)
+    IDT_AVATAR  = 4, // sguardo e battito di ciglia: acceso solo mentre si muove
+    IDT_BLINK   = 5, // prossimo battito di ciglia (one-shot, intervallo casuale)
 };
 
 // Il bordo su cui vive la barra.

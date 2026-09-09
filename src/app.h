@@ -46,6 +46,16 @@ private:
 
     // Il rettangolo dell'avatar in coordinate schermo, vuoto se non c'e'.
     RECT AvatarScreenRect() const;
+
+    // Lo sguardo insegue il cursore con uno smorzamento, e ogni tanto sbatte le
+    // ciglia. Entrambe girano su un timer che esiste solo mentre serve: a
+    // cursore fermo e occhi aperti non c'e' nessun timer acceso, e la barra
+    // torna a costare zero.
+    void AvatarAimAt(POINT cursor);
+    void OnAvatarTick();
+    void ScheduleBlink();
+    void EnsureAvatarTimer();
+    void PushAvatarState();
     void  SetCursorTick(UINT intervalMs);
 
     // ── Geometria e disegno ──
@@ -106,6 +116,13 @@ private:
     // ricevere il cursore anche quando tutto il resto e' click-through.
     bool avatarHovered_   = false;
     bool avatarAttention_ = false;
+
+    float     avatarLookX_ = 0.f, avatarLookY_ = 0.f;   // dove guarda ora
+    float     avatarAimX_  = 0.f, avatarAimY_  = 0.f;   // dove vorrebbe guardare
+    float     avatarBlink_ = 0.f;                       // 0 aperti, 1 chiusi
+    ULONGLONG blinkStart_  = 0;                         // 0 = non sta sbattendo
+    ULONGLONG avatarTick_  = 0;
+    bool      avatarTimerOn_ = false;
 
     float cursorAlong_ = -1.f;  // cursore lungo la barra, in DIP; < 0 = non sopra
     float magnify_     = 0.f;

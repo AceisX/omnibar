@@ -740,9 +740,32 @@ La strada praticabile separa nettamente le due cose:
 | **Si scrive** | il disegnatore in C++/Direct2D, nostro. Primitive geometriche, arrotondamenti, rotazioni: è esattamente ciò che Direct2D sa fare |
 | **Non si tocca** | il loro codice. Nessuna riga nel nostro binario, nessun collegamento, nessuna derivazione |
 
-Finché quel disegnatore non esiste, il posto è occupato da un segnaposto dichiarato come tale:
-un disco con due occhi. Serve a far vedere che il posto c'è e che riceve i click, non a essere
-carino.
+#### Cosa fa l'avatar oggi, e quanto costa
+
+Non è un segnaposto inerte: **guarda il cursore e sbatte le ciglia.**
+
+Lo sguardo insegue con un ritardo di ~110 ms, e il ritardo è il punto. Fra la direzione del
+cursore e dove l'occhio è arrivato c'è tutta la differenza fra uno sguardo e un indicatore:
+sotto i cinquanta millisecondi sembra incollato al mouse, sopra i duecento sembra distratto.
+Quando il cursore gli arriva addosso gli occhi tornano al centro invece di strabuzzare.
+
+Il battito ha un intervallo casuale fra 2,6 e 6,8 secondi — a cadenza fissa si noterebbe il
+meccanismo invece della faccia — e chiude l'occhio schiacciandolo, non facendolo sparire: un
+occhio che svanisce si legge come un errore di disegno, uno che si appiattisce si legge come
+una palpebra.
+
+**Il costo è zero quando non si muove.** Due cose lo garantiscono:
+
+- I timer dello sguardo e del battito **esistono solo mentre servono**. A cursore fermo e
+  occhi aperti non c'è nessun timer acceso: misurato 0 ms di CPU su 45 secondi.
+- Quando invece si muove, **si ridisegna il solo disco**, e si ricopia sullo schermo la sola
+  area che occupa (`UpdateLayeredWindowIndirect` con area sporca). La superficie della barra è
+  alta quanto lo schermo: ridisegnarla tutta per spostare due pupille di mezzo punto
+  costerebbe centottanta kilobyte a fotogramma per un disegno che ne cambia tre, e a quel
+  prezzo un avatar che segue il cursore non è un dettaglio simpatico, è una barra che consuma.
+
+Verificato a schermo: con il cursore in alto a sinistra le pupille puntano lì; campionando i
+pixel dentro la faccia per dieci secondi, il conteggio scende a zero durante i battiti.
 
 ---
 
