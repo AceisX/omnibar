@@ -298,10 +298,18 @@ void Renderer::DrawButtonLike(const ui::Widget& w, const DrawState& state) {
                          w.rect.w + grow * 2.f, w.rect.h + grow * 2.f};
     }
 
-    if (isOn)             FillRounded(pill, theme_.widgetRadius + mag * 2.f, theme_.accent);
-    else if (isPressed)   FillRounded(pill, theme_.widgetRadius + mag * 2.f, theme_.pressed);
-    else if (isHovered)   FillRounded(pill, theme_.widgetRadius + mag * 2.f, theme_.hover);
-    else if (mag > 0.05f) FillRounded(pill, theme_.widgetRadius + mag * 2.f,
+    // Un bottone di sola icona e' quadrato, e su un quadrato il raggio pieno
+    // da' un cerchio. Non e' un vezzo: in una colonna di icone tutte uguali il
+    // cerchio pieno dice "questo e' acceso" a colpo d'occhio, mentre un
+    // rettangolo smussato somiglia troppo al riquadro di hover del vicino.
+    const bool  round  = std::fabs(pill.w - pill.h) < 2.f;
+    const float radius = round ? std::min(pill.w, pill.h) * 0.5f
+                               : theme_.widgetRadius + mag * 2.f;
+
+    if (isOn)             FillRounded(pill, radius, theme_.accent);
+    else if (isPressed)   FillRounded(pill, radius, theme_.pressed);
+    else if (isHovered)   FillRounded(pill, radius, theme_.hover);
+    else if (mag > 0.05f) FillRounded(pill, radius,
                                       theme_.hover.withAlpha(theme_.hover.a * mag * 0.7f));
 
     Color fg = theme_.text;

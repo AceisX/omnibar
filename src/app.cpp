@@ -690,21 +690,14 @@ void App::BuildTree() {
     // profili dichiarativi e i moduli.
     using namespace ui;
 
-    root_ = Group(Direction::Row, 4.f, {
-        Label(L"OmniBar", Emphasis::Dim),      // sparisce in compatto
-        Separator(),
+    root_ = Group(Direction::Row, 10.f, {
         Button("demo.folder", L"folder", L"Cartella",   Internal(L"demo.noop")),
         Button("demo.camera", L"camera", L"Cattura",    Internal(L"demo.noop")),
         Button("demo.copy",   L"copy",   L"Copia",      Internal(L"demo.noop")),
-        Separator(),
-        Button("demo.prev",   L"prev",   L"Precedente", Internal(L"demo.noop")),
+        Toggle("demo.record", L"record", L"Registra", true, Internal(L"demo.noop")),
         Button("demo.play",   L"play",   L"Riproduci",  Internal(L"demo.noop")),
-        Button("demo.next",   L"next",   L"Successivo", Internal(L"demo.noop")),
-        Separator(),
-        Toggle("demo.record", L"record", L"Registra", false, Internal(L"demo.noop")),
-        Separator(),
-        Toggle("bar.pin",     L"pin",      L"Tieni aperta", false, Internal(L"bar.pin")),
-        Button("bar.menu",    L"settings", L"Menu",         Internal(L"bar.menu")),
+        Toggle("bar.pin",     L"pin",    L"Tieni aperta", false, Internal(L"bar.pin")),
+        Button("bar.menu",    L"settings", L"Menu",       Internal(L"bar.menu")),
     });
     root_.align = ui::Align::Center;
 

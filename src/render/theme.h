@@ -44,7 +44,10 @@ struct Theme {
     float cornerRadius     = 20.f;
     float widgetRadius     = 8.f;
     float borderWidth      = 1.f;
-    float opacity          = 0.96f;
+    // Quasi opaca. Una barra velata si confonde con quello che ha dietro, e
+    // quello che ha dietro cambia tutto il giorno: la leggibilita' non puo'
+    // dipendere dalla finestra che c'e' sotto in quel momento.
+    float opacity          = 0.99f;
 
     // Il font del testo e quello delle icone: Segoe Fluent Icons c'e' su
     // Windows 11, Segoe MDL2 Assets e' il ripiego su Windows 10.
